@@ -251,10 +251,25 @@
       background: #161b22;
       border-top: 1px solid #30363d;
       gap: 4px;
-      overflow-x: auto;
+      flex-wrap: wrap;
     }
     @media (max-width: 768px) {
       #mobile-toolbar { display: flex; }
+    }
+    .toolbar-row {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+    }
+    .arrow-keys {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      align-items: center;
+    }
+    .arrow-row {
+      display: flex;
+      gap: 4px;
     }
     .key-btn {
       padding: 6px 10px;
@@ -369,13 +384,21 @@
   </div>
 
   <div id="mobile-toolbar">
-    <button class="key-btn" data-key="Escape">ESC</button>
-    <button class="key-btn" data-key="Tab">TAB</button>
-    <button class="key-btn" id="btn-ctrl" data-modifier="ctrl">Ctrl</button>
-    <button class="key-btn" data-seq="\x1b[A">Up</button>
-    <button class="key-btn" data-seq="\x1b[B">Down</button>
-    <button class="key-btn" data-seq="\x1b[D">Left</button>
-    <button class="key-btn" data-seq="\x1b[C">Right</button>
+    <div class="toolbar-row">
+      <button class="key-btn" data-key="Escape">ESC</button>
+      <button class="key-btn" data-key="Tab">TAB</button>
+      <button class="key-btn" id="btn-ctrl" data-modifier="ctrl">Ctrl</button>
+    </div>
+    <div class="arrow-keys">
+      <div class="arrow-row">
+        <button class="key-btn" data-seq="\x1b[A">↑</button>
+      </div>
+      <div class="arrow-row">
+        <button class="key-btn" data-seq="\x1b[D">←</button>
+        <button class="key-btn" data-seq="\x1b[B">↓</button>
+        <button class="key-btn" data-seq="\x1b[C">→</button>
+      </div>
+    </div>
   </div>
 
   <div id="connect-overlay">
@@ -890,15 +913,16 @@
     btnCtrl.addEventListener('click', (e) => {
       e.preventDefault();
       setCtrl(!ctrlActive);
-      // Re-focus terminal so next keypress goes there
+      // Re-focus terminal without triggering viewport scroll
       if (activeSessionId) {
         const session = termSessions.get(activeSessionId);
-        if (session) session.term.focus();
+        if (session) session.term.focus({ preventScroll: true });
       }
     });
 
     document.querySelectorAll('.key-btn:not([data-modifier])').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (!activeSessionId) return;
         const session = termSessions.get(activeSessionId);
         if (!session || session.ws.readyState !== 1) return;
@@ -917,7 +941,8 @@
         }
         // Ctrl auto-deactivates after sending a non-modifier key
         if (ctrlActive) setCtrl(false);
-        session.term.focus();
+        // Re-focus terminal without triggering viewport scroll
+        session.term.focus({ preventScroll: true });
       });
     });
 
