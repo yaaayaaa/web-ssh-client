@@ -177,11 +177,21 @@
     }
     .terminal-wrapper.active { display: block; }
     .terminal-wrapper .xterm { height: 100%; }
+    .terminal-wrapper .xterm-viewport {
+      scrollbar-width: none;
+    }
+    .terminal-wrapper .xterm-viewport::-webkit-scrollbar {
+      display: none;
+    }
     .touch-layer {
       position: absolute;
       inset: 0;
       z-index: 10;
       touch-action: none;
+      pointer-events: none;
+    }
+    @media (pointer: coarse) {
+      .touch-layer { pointer-events: auto; }
     }
 
     /* --- Empty State --- */
