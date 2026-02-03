@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>Web SSH Client</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -222,7 +225,7 @@
       border-radius: 4px;
       color: #c9d1d9;
       font-size: 12px;
-      font-family: monospace;
+      font-family: 'JetBrains Mono', monospace;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -566,7 +569,7 @@
       const term = new Terminal({
         cursorBlink: true,
         fontSize: 14,
-        fontFamily: "'Menlo', 'DejaVu Sans Mono', 'Consolas', monospace",
+        fontFamily: "'JetBrains Mono', monospace",
         theme: {
           background: '#0d1117',
           foreground: '#c9d1d9',
@@ -596,7 +599,7 @@
           const msg = JSON.parse(e.data);
           if (msg.type === 'output') {
             mouseTracker.feed(msg.data);
-            term.write(msg.data);
+            term.write(forceTextPresentation(msg.data));
           } else if (msg.type === 'closed') {
             term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
             removeSession(sessionId);
@@ -644,7 +647,7 @@
           const msg = JSON.parse(e.data);
           if (msg.type === 'output') {
             if (session.mouseTracker) session.mouseTracker.feed(msg.data);
-            session.term.write(msg.data);
+            session.term.write(forceTextPresentation(msg.data));
           } else if (msg.type === 'closed') {
             session.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
             removeSession(sessionId);
@@ -807,6 +810,14 @@
     // Intercept keyboard input when Ctrl toggle is active.
     // xterm.js onData fires for normal key presses — we intercept and
     // convert to Ctrl+key (byte = key charCode - 64 for A-Z, or special cases).
+    // Force text presentation for characters that mobile renders as emoji.
+    // Insert U+FE0E (Variation Selector 15) after characters with emoji defaults.
+    // Regex matches codepoints commonly rendered as color emoji on mobile.
+    const EMOJI_DEFAULT_RE = /[\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9-\u21AA\u231A-\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA-\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u27BF\u2934-\u2935\u2B05-\u2B07\u2B1B-\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299](?!\uFE0E)/g;
+    function forceTextPresentation(str) {
+      return str.replace(EMOJI_DEFAULT_RE, '$&\uFE0E');
+    }
+
     // Filter out terminal auto-responses that xterm.js generates.
     // If echoed back by the shell they appear as garbage text.
     // Matches: DA1/DA2 (\x1b[?...c, \x1b[>...c), DSR (\x1b[...n),
