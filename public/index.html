@@ -174,6 +174,12 @@
     }
     .terminal-wrapper.active { display: block; }
     .terminal-wrapper .xterm { height: 100%; }
+    .touch-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      touch-action: none;
+    }
 
     /* --- Empty State --- */
     #empty-state {
@@ -222,6 +228,84 @@
       flex-shrink: 0;
     }
     .key-btn:active { background: #30363d; }
+    .key-btn.mod-active {
+      background: #1f6feb;
+      border-color: #1f6feb;
+      color: #fff;
+    }
+
+    /* --- Saved Connections List --- */
+    .saved-list {
+      margin-bottom: 16px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .saved-list-header {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .saved-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      gap: 8px;
+    }
+    .saved-item:hover { border-color: #1f6feb; }
+    .saved-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .saved-item-name {
+      font-size: 13px;
+      color: #c9d1d9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .saved-item-detail {
+      font-size: 11px;
+      color: #484f58;
+    }
+    .saved-item-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .saved-item-actions button {
+      padding: 2px 6px;
+      background: none;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .saved-item-actions button:hover { color: #c9d1d9; border-color: #8b949e; }
+    .saved-item-actions .del-btn:hover { color: #f85149; border-color: #f85149; }
+    .divider {
+      border: none;
+      border-top: 1px solid #30363d;
+      margin: 12px 0;
+    }
+    .save-check {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .save-check input { accent-color: #238636; }
   </style>
 </head>
 <body>
@@ -241,10 +325,7 @@
   <div id="mobile-toolbar">
     <button class="key-btn" data-key="Escape">ESC</button>
     <button class="key-btn" data-key="Tab">TAB</button>
-    <button class="key-btn" data-seq="\x01">C-a</button>
-    <button class="key-btn" data-seq="\x03">C-c</button>
-    <button class="key-btn" data-seq="\x04">C-d</button>
-    <button class="key-btn" data-seq="\x1a">C-z</button>
+    <button class="key-btn" id="btn-ctrl" data-modifier="ctrl">Ctrl</button>
     <button class="key-btn" data-seq="\x1b[A">Up</button>
     <button class="key-btn" data-seq="\x1b[B">Down</button>
     <button class="key-btn" data-seq="\x1b[D">Left</button>
@@ -254,6 +335,8 @@
   <div id="connect-overlay">
     <div id="connect-dialog">
       <h2>New Connection</h2>
+      <div class="saved-list" id="saved-list"></div>
+      <hr class="divider" id="saved-divider" style="display:none">
       <form id="connect-form">
         <div class="form-row">
           <div class="form-group" style="flex:3">
@@ -277,6 +360,10 @@
           <label>Private Key (optional)</label>
           <textarea id="f-key" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
         </div>
+        <label class="save-check">
+          <input type="checkbox" id="f-save" checked>
+          Save this connection
+        </label>
         <div class="error-msg" id="connect-error"></div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" onclick="hideConnectDialog()">Cancel</button>
@@ -313,8 +400,98 @@
       } catch {}
     }
 
+    // --- Saved Connections ---
+    let savedConnections = [];
+
+    async function loadSavedConnections() {
+      try {
+        const res = await fetch('/api/connections');
+        savedConnections = await res.json();
+      } catch { savedConnections = []; }
+      renderSavedList();
+    }
+
+    function renderSavedList() {
+      const list = document.getElementById('saved-list');
+      const divider = document.getElementById('saved-divider');
+      list.innerHTML = '';
+      if (savedConnections.length === 0) {
+        divider.style.display = 'none';
+        return;
+      }
+      divider.style.display = '';
+      list.innerHTML = '<div class="saved-list-header">Saved Connections</div>';
+      for (const c of savedConnections) {
+        const item = document.createElement('div');
+        item.className = 'saved-item';
+        item.innerHTML = `
+          <div class="saved-item-info">
+            <div class="saved-item-name">${escapeHtml(c.name)}</div>
+            <div class="saved-item-detail">${escapeHtml(c.username)}@${escapeHtml(c.host)}:${c.port}</div>
+          </div>
+          <div class="saved-item-actions">
+            <button class="del-btn" title="Delete">&times;</button>
+          </div>
+        `;
+        item.querySelector('.saved-item-info').addEventListener('click', () => connectSaved(c.id));
+        item.querySelector('.del-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSavedConnection(c.id);
+        });
+        list.appendChild(item);
+      }
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    async function connectSaved(connId) {
+      connectError.style.display = 'none';
+      btnConnect.disabled = true;
+      btnConnect.textContent = 'Connecting...';
+      try {
+        const cRes = await fetch(`/api/connections/${connId}`);
+        if (!cRes.ok) throw new Error('Failed to load connection');
+        const conn = await cRes.json();
+        const body = {
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: conn.password || undefined,
+          privateKey: conn.privateKey || undefined,
+        };
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Connection failed');
+        hideConnectDialog();
+        attachSession(data.sessionId, data);
+      } catch (err) {
+        connectError.textContent = err.message;
+        connectError.style.display = 'block';
+      } finally {
+        btnConnect.disabled = false;
+        btnConnect.textContent = 'Connect';
+      }
+    }
+
+    async function deleteSavedConnection(connId) {
+      try {
+        await fetch(`/api/connections/${connId}`, { method: 'DELETE' });
+        savedConnections = savedConnections.filter(c => c.id !== connId);
+        renderSavedList();
+      } catch {}
+    }
+
     // --- Connect Dialog ---
     function showConnectDialog() {
+      loadSavedConnections();
       connectOverlay.classList.add('show');
       document.getElementById('f-host').focus();
     }
@@ -323,6 +500,7 @@
       connectError.style.display = 'none';
       connectForm.reset();
       document.getElementById('f-port').value = '22';
+      document.getElementById('f-save').checked = true;
     }
 
     document.getElementById('btn-new').addEventListener('click', showConnectDialog);
@@ -349,6 +527,17 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Connection failed');
+
+        // Save connection if checkbox is checked
+        if (document.getElementById('f-save').checked) {
+          try {
+            await fetch('/api/connections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+          } catch {}
+        }
 
         hideConnectDialog();
         attachSession(data.sessionId, data);
@@ -391,6 +580,8 @@
       term.open(wrapper);
       fitAddon.fit();
 
+      const mouseTracker = createMouseModeTracker();
+
       // WebSocket
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}`);
@@ -404,6 +595,7 @@
         try {
           const msg = JSON.parse(e.data);
           if (msg.type === 'output') {
+            mouseTracker.feed(msg.data);
             term.write(msg.data);
           } else if (msg.type === 'closed') {
             term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
@@ -420,11 +612,7 @@
         setTimeout(() => reconnectWs(sessionId), 2000);
       };
 
-      term.onData((data) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'input', data }));
-        }
-      });
+      wrapOnData(term, ws);
 
       term.onResize(({ cols, rows }) => {
         if (ws.readyState === 1) {
@@ -432,10 +620,9 @@
         }
       });
 
-      // --- Touch scroll → mouse wheel for tmux ---
-      setupTouchScroll(wrapper, term, () => termSessions.get(sessionId)?.ws);
+      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker });
 
-      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config });
+      setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
       activateSession(sessionId);
       renderTabs();
     }
@@ -456,6 +643,7 @@
         try {
           const msg = JSON.parse(e.data);
           if (msg.type === 'output') {
+            if (session.mouseTracker) session.mouseTracker.feed(msg.data);
             session.term.write(msg.data);
           } else if (msg.type === 'closed') {
             session.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
@@ -468,11 +656,7 @@
         setTimeout(() => reconnectWs(sessionId), 3000);
       };
 
-      session.term.onData((data) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'input', data }));
-        }
-      });
+      wrapOnData(session.term, ws);
 
       session.ws = ws;
     }
@@ -571,97 +755,199 @@
     }
 
     // --- Mobile toolbar ---
-    document.querySelectorAll('.key-btn').forEach(btn => {
+    // Only send via WebSocket — the server echoes back and xterm.js renders it.
+    // Do NOT use term.input() here as it triggers onData → double send.
+    function parseEscSeq(str) {
+      return str.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+
+    // Ctrl toggle state
+    let ctrlActive = false;
+    const btnCtrl = document.getElementById('btn-ctrl');
+
+    function setCtrl(active) {
+      ctrlActive = active;
+      btnCtrl.classList.toggle('mod-active', active);
+    }
+
+    btnCtrl.addEventListener('click', (e) => {
+      e.preventDefault();
+      setCtrl(!ctrlActive);
+      // Re-focus terminal so next keypress goes there
+      if (activeSessionId) {
+        const session = termSessions.get(activeSessionId);
+        if (session) session.term.focus();
+      }
+    });
+
+    document.querySelectorAll('.key-btn:not([data-modifier])').forEach(btn => {
       btn.addEventListener('click', () => {
         if (!activeSessionId) return;
         const session = termSessions.get(activeSessionId);
-        if (!session) return;
+        if (!session || session.ws.readyState !== 1) return;
+        let data;
         const seq = btn.dataset.seq;
         const key = btn.dataset.key;
         if (seq) {
-          session.term.input(seq);
-          if (session.ws.readyState === 1) {
-            session.ws.send(JSON.stringify({ type: 'input', data: seq }));
-          }
+          data = parseEscSeq(seq);
         } else if (key === 'Escape') {
-          const data = '\x1b';
-          session.term.input(data);
-          if (session.ws.readyState === 1) {
-            session.ws.send(JSON.stringify({ type: 'input', data }));
-          }
+          data = '\x1b';
         } else if (key === 'Tab') {
-          const data = '\t';
-          session.term.input(data);
-          if (session.ws.readyState === 1) {
-            session.ws.send(JSON.stringify({ type: 'input', data }));
-          }
+          data = '\t';
         }
+        if (data) {
+          session.ws.send(JSON.stringify({ type: 'input', data }));
+        }
+        // Ctrl auto-deactivates after sending a non-modifier key
+        if (ctrlActive) setCtrl(false);
         session.term.focus();
       });
     });
 
-    // --- Touch scroll → mouse wheel escape sequences ---
-    // Converts touch swipe gestures into mouse wheel events that tmux understands.
-    // Works with both legacy (X10/normal) and SGR mouse encoding.
-    function setupTouchScroll(wrapper, term, getWs) {
-      let touchStartY = null;
-      let touchAccum = 0;
-      const SCROLL_THRESHOLD = 15; // px per scroll line
-      const LINES_PER_TICK = 3;    // scroll lines per threshold hit
+    // Intercept keyboard input when Ctrl toggle is active.
+    // xterm.js onData fires for normal key presses — we intercept and
+    // convert to Ctrl+key (byte = key charCode - 64 for A-Z, or special cases).
+    // Filter out terminal query responses (DA1, DA2, DSR) that xterm.js
+    // auto-generates. If echoed back by the shell they appear as garbage text.
+    const DA_RESPONSE_RE = /\x1b\[\??[\d;]*[c0-9n]/g;
 
-      wrapper.addEventListener('touchstart', (e) => {
+    function wrapOnData(term, ws) {
+      term.onData((data) => {
+        if (ws.readyState !== 1) return;
+        let toSend = data;
+
+        // Strip Device Attributes / status responses
+        if (toSend.includes('\x1b[')) {
+          toSend = toSend.replace(DA_RESPONSE_RE, '');
+          if (toSend.length === 0) return;
+        }
+
+        if (ctrlActive) {
+          const ch = data.length === 1 ? data.toLowerCase() : null;
+          if (ch && ch >= 'a' && ch <= 'z') {
+            toSend = String.fromCharCode(ch.charCodeAt(0) - 96);
+          }
+          setCtrl(false);
+        }
+        ws.send(JSON.stringify({ type: 'input', data: toSend }));
+      });
+    }
+
+
+    // --- Mouse mode tracker ---
+    // Watches terminal output for DEC private mode set/reset sequences
+    // to determine if the remote application has mouse tracking enabled.
+    // ?1000 = X10 mouse, ?1002 = button-event, ?1003 = any-event
+    // ?1006 = SGR extended mouse encoding
+    function createMouseModeTracker() {
+      let mouseMode = false;  // any mouse tracking active
+      let sgrMode = false;    // SGR encoding active
+      return {
+        get active() { return mouseMode; },
+        get sgr() { return sgrMode; },
+        // Call with each chunk of output data from the server
+        feed(data) {
+          // Match \x1b[?{modes}h (set) and \x1b[?{modes}l (reset)
+          const re = /\x1b\[\?([\d;]+)([hl])/g;
+          let m;
+          while ((m = re.exec(data)) !== null) {
+            const modes = m[1].split(';');
+            const enable = m[2] === 'h';
+            for (const mode of modes) {
+              if (mode === '1000' || mode === '1002' || mode === '1003') {
+                mouseMode = enable;
+              }
+              if (mode === '1006') {
+                sgrMode = enable;
+              }
+            }
+          }
+        },
+      };
+    }
+
+    // --- Touch layer: transparent div over terminal to capture all touch ---
+    // Handles scroll (mouse wheel for tmux) and tap-to-focus.
+    function setupTouchLayer(wrapper, term, getWs, mouseTracker) {
+      const layer = document.createElement('div');
+      layer.className = 'touch-layer';
+      wrapper.appendChild(layer);
+
+      let touchStartY = null;
+      let touchAccum = 0;  // sub-line pixel remainder
+      let moved = false;
+
+      // Get the pixel height of one terminal row
+      function lineHeight() {
+        const el = wrapper.querySelector('.xterm-screen');
+        if (el && term.rows > 0) return el.offsetHeight / term.rows;
+        return 18; // fallback
+      }
+
+      layer.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
         touchStartY = e.touches[0].clientY;
         touchAccum = 0;
-      }, { passive: true });
+        moved = false;
+      });
 
-      wrapper.addEventListener('touchmove', (e) => {
+      layer.addEventListener('touchmove', (e) => {
         if (touchStartY === null || e.touches.length !== 1) return;
+        e.preventDefault();
+
         const currentY = e.touches[0].clientY;
-        const delta = touchStartY - currentY;
-        touchAccum += delta;
+        const delta = touchStartY - currentY; // positive = finger moved up
         touchStartY = currentY;
 
-        // Convert accumulated distance into scroll ticks
-        while (Math.abs(touchAccum) >= SCROLL_THRESHOLD) {
-          const scrollUp = touchAccum < 0;
-          touchAccum += scrollUp ? SCROLL_THRESHOLD : -SCROLL_THRESHOLD;
+        if (Math.abs(delta) > 3) moved = true;
 
+        touchAccum += delta;
+        const lh = lineHeight();
+        const lines = Math.trunc(touchAccum / lh);
+        if (lines === 0) return;
+        touchAccum -= lines * lh; // keep fractional remainder
+
+        const scrollDown = lines > 0;
+        const absLines = Math.abs(lines);
+
+        if (mouseTracker.active) {
           const ws = getWs();
-          if (!ws || ws.readyState !== 1) continue;
-
-          // Send mouse wheel sequences (repeat for faster scroll feel)
-          for (let i = 0; i < LINES_PER_TICK; i++) {
-            // SGR encoding: \x1b[<64;col;rowM (up) / \x1b[<65;col;rowM (down)
-            // Use center of terminal as coordinates
-            const col = Math.floor(term.cols / 2);
-            const row = Math.floor(term.rows / 2);
-            const btn = scrollUp ? 64 : 65;
-            const sgr = `\x1b[<${btn};${col};${row}M`;
-
-            // Legacy encoding: \x1b[M + (btn+32) + (col+33) + (row+33)
-            const legacyBtn = (scrollUp ? 64 : 65) + 32;
-            const legacy = `\x1b[M${String.fromCharCode(legacyBtn)}${String.fromCharCode(col + 33)}${String.fromCharCode(row + 33)}`;
-
-            // Send both — the terminal application will use whichever mode it has enabled
-            // SGR is tried first as it's the modern standard
-            ws.send(JSON.stringify({ type: 'input', data: sgr }));
+          if (!ws || ws.readyState !== 1) return;
+          const col = Math.floor(term.cols / 2);
+          const row = Math.floor(term.rows / 2);
+          const btn = scrollDown ? 65 : 64;
+          for (let i = 0; i < absLines; i++) {
+            if (mouseTracker.sgr) {
+              ws.send(JSON.stringify({ type: 'input', data: `\x1b[<${btn};${col};${row}M` }));
+            } else {
+              const lb = btn + 32;
+              ws.send(JSON.stringify({ type: 'input', data: `\x1b[M${String.fromCharCode(lb)}${String.fromCharCode(col + 33)}${String.fromCharCode(row + 33)}` }));
+            }
           }
+        } else {
+          term.scrollLines(lines);
         }
-
-        // Prevent page scroll while swiping on terminal
-        e.preventDefault();
       }, { passive: false });
 
-      wrapper.addEventListener('touchend', () => {
+      layer.addEventListener('touchend', (e) => {
+        if (!moved) {
+          // Prevent browser from firing synthetic click/mousedown
+          // which would steal focus from xterm.js textarea
+          e.preventDefault();
+          term.focus();
+        }
         touchStartY = null;
         touchAccum = 0;
-      }, { passive: true });
+        moved = false;
+      });
 
-      wrapper.addEventListener('touchcancel', () => {
+      layer.addEventListener('touchcancel', () => {
         touchStartY = null;
         touchAccum = 0;
-      }, { passive: true });
+        moved = false;
+      });
+
+      return layer;
     }
 
     // --- Keyboard shortcut ---

@@ -5,4 +5,9 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
+    volumes:
+      - ssh-data:/app/data
     restart: unless-stopped
+
+volumes:
+  ssh-data:

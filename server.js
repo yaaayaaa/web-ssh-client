@@ -5,12 +5,99 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { Client: SSHClient } = require('ssh2');
 
+const fs = require('fs');
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --- Saved Connections Store (JSON file) ---
+const DATA_DIR = path.join(__dirname, 'data');
+const CONNECTIONS_FILE = path.join(DATA_DIR, 'connections.json');
+
+function loadConnections() {
+  try {
+    return JSON.parse(fs.readFileSync(CONNECTIONS_FILE, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveConnections(connections) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CONNECTIONS_FILE, JSON.stringify(connections, null, 2));
+}
+
+// List saved connections
+app.get('/api/connections', (req, res) => {
+  const connections = loadConnections();
+  // Don't send passwords/keys in list response
+  res.json(connections.map(c => ({
+    id: c.id,
+    name: c.name,
+    host: c.host,
+    port: c.port,
+    username: c.username,
+    hasPassword: !!c.password,
+    hasPrivateKey: !!c.privateKey,
+  })));
+});
+
+// Get single connection (with credentials for connecting)
+app.get('/api/connections/:id', (req, res) => {
+  const connections = loadConnections();
+  const conn = connections.find(c => c.id === req.params.id);
+  if (!conn) return res.status(404).json({ error: 'Not found' });
+  res.json(conn);
+});
+
+// Save new connection
+app.post('/api/connections', (req, res) => {
+  const { name, host, port = 22, username, password, privateKey } = req.body;
+  if (!host || !username) {
+    return res.status(400).json({ error: 'host and username are required' });
+  }
+  const connections = loadConnections();
+  const conn = {
+    id: uuidv4(),
+    name: name || `${username}@${host}`,
+    host,
+    port: parseInt(port, 10),
+    username,
+    password: password || '',
+    privateKey: privateKey || '',
+  };
+  connections.push(conn);
+  saveConnections(connections);
+  res.json({ id: conn.id, name: conn.name, host: conn.host, port: conn.port, username: conn.username });
+});
+
+// Update saved connection
+app.put('/api/connections/:id', (req, res) => {
+  const connections = loadConnections();
+  const idx = connections.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  const { name, host, port, username, password, privateKey } = req.body;
+  if (name !== undefined) connections[idx].name = name;
+  if (host !== undefined) connections[idx].host = host;
+  if (port !== undefined) connections[idx].port = parseInt(port, 10);
+  if (username !== undefined) connections[idx].username = username;
+  if (password !== undefined) connections[idx].password = password;
+  if (privateKey !== undefined) connections[idx].privateKey = privateKey;
+  saveConnections(connections);
+  res.json({ ok: true });
+});
+
+// Delete saved connection
+app.delete('/api/connections/:id', (req, res) => {
+  let connections = loadConnections();
+  connections = connections.filter(c => c.id !== req.params.id);
+  saveConnections(connections);
+  res.json({ ok: true });
+});
 
 // --- Session Store ---
 // sessionId -> { ssh, stream, buffer, cols, rows, config, createdAt, lastActivity }
