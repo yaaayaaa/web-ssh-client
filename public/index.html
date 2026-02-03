@@ -807,18 +807,20 @@
     // Intercept keyboard input when Ctrl toggle is active.
     // xterm.js onData fires for normal key presses — we intercept and
     // convert to Ctrl+key (byte = key charCode - 64 for A-Z, or special cases).
-    // Filter out terminal query responses (DA1, DA2, DSR) that xterm.js
-    // auto-generates. If echoed back by the shell they appear as garbage text.
-    const DA_RESPONSE_RE = /\x1b\[\??[\d;]*[c0-9n]/g;
+    // Filter out terminal auto-responses that xterm.js generates.
+    // If echoed back by the shell they appear as garbage text.
+    // Matches: DA1/DA2 (\x1b[?...c, \x1b[>...c), DSR (\x1b[...n),
+    //          OSC color responses (\x1b]10;...\x1b\\ or \x1b]11;...\x07 etc.)
+    const TERM_RESPONSE_RE = /\x1b\[\??[>]?[\d;]*[cn]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
     function wrapOnData(term, ws) {
       term.onData((data) => {
         if (ws.readyState !== 1) return;
         let toSend = data;
 
-        // Strip Device Attributes / status responses
-        if (toSend.includes('\x1b[')) {
-          toSend = toSend.replace(DA_RESPONSE_RE, '');
+        // Strip terminal auto-responses
+        if (toSend.includes('\x1b')) {
+          toSend = toSend.replace(TERM_RESPONSE_RE, '');
           if (toSend.length === 0) return;
         }
 
@@ -866,57 +868,48 @@
       };
     }
 
-    // --- Touch layer: transparent div over terminal to capture all touch ---
-    // Handles scroll (mouse wheel for tmux) and tap-to-focus.
+    // --- Touch layer: direct touch control with inertia ---
     function setupTouchLayer(wrapper, term, getWs, mouseTracker) {
       const layer = document.createElement('div');
       layer.className = 'touch-layer';
       wrapper.appendChild(layer);
 
       let touchStartY = null;
-      let touchAccum = 0;  // sub-line pixel remainder
+      let pixelAccum = 0;
       let moved = false;
+      let inertiaId = null;
 
-      // Get the pixel height of one terminal row
+      // Velocity: track last few moves with timestamps
+      let lastY = 0;
+      let lastT = 0;
+      let velocity = 0;
+
+      // Deceleration modeled after iOS UIScrollView:
+      // v(t) = v0 * rate^(t/16ms), rate ≈ 0.992 per ms → ~0.88 per frame
+      const DECEL = 0.88;
+      const STOP_THRESHOLD = 0.3; // px/frame
+
       function lineHeight() {
         const el = wrapper.querySelector('.xterm-screen');
         if (el && term.rows > 0) return el.offsetHeight / term.rows;
-        return 18; // fallback
+        return 18;
       }
 
-      layer.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
-        touchStartY = e.touches[0].clientY;
-        touchAccum = 0;
-        moved = false;
-      });
-
-      layer.addEventListener('touchmove', (e) => {
-        if (touchStartY === null || e.touches.length !== 1) return;
-        e.preventDefault();
-
-        const currentY = e.touches[0].clientY;
-        const delta = touchStartY - currentY; // positive = finger moved up
-        touchStartY = currentY;
-
-        if (Math.abs(delta) > 3) moved = true;
-
-        touchAccum += delta;
+      function scrollByPixels(px) {
+        pixelAccum += px;
         const lh = lineHeight();
-        const lines = Math.trunc(touchAccum / lh);
+        const lines = Math.trunc(pixelAccum / lh);
         if (lines === 0) return;
-        touchAccum -= lines * lh; // keep fractional remainder
-
-        const scrollDown = lines > 0;
-        const absLines = Math.abs(lines);
+        pixelAccum -= lines * lh;
 
         if (mouseTracker.active) {
           const ws = getWs();
           if (!ws || ws.readyState !== 1) return;
           const col = Math.floor(term.cols / 2);
           const row = Math.floor(term.rows / 2);
-          const btn = scrollDown ? 65 : 64;
-          for (let i = 0; i < absLines; i++) {
+          const btn = (lines > 0) ? 65 : 64;
+          const abs = Math.abs(lines);
+          for (let i = 0; i < abs; i++) {
             if (mouseTracker.sgr) {
               ws.send(JSON.stringify({ type: 'input', data: `\x1b[<${btn};${col};${row}M` }));
             } else {
@@ -927,24 +920,76 @@
         } else {
           term.scrollLines(lines);
         }
+      }
+
+      function stopInertia() {
+        if (inertiaId !== null) {
+          cancelAnimationFrame(inertiaId);
+          inertiaId = null;
+        }
+      }
+
+      function runInertia() {
+        stopInertia();
+        function tick() {
+          velocity *= DECEL;
+          if (Math.abs(velocity) < STOP_THRESHOLD) { inertiaId = null; return; }
+          scrollByPixels(velocity);
+          inertiaId = requestAnimationFrame(tick);
+        }
+        inertiaId = requestAnimationFrame(tick);
+      }
+
+      layer.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        stopInertia();
+        touchStartY = e.touches[0].clientY;
+        lastY = touchStartY;
+        lastT = performance.now();
+        velocity = 0;
+        pixelAccum = 0;
+        moved = false;
+      });
+
+      layer.addEventListener('touchmove', (e) => {
+        if (touchStartY === null || e.touches.length !== 1) return;
+        e.preventDefault();
+
+        const now = performance.now();
+        const currentY = e.touches[0].clientY;
+        const delta = lastY - currentY; // positive = finger up = scroll down
+
+        if (Math.abs(currentY - touchStartY) > 5) moved = true;
+
+        // Exponential smoothing for velocity (px/frame)
+        const dt = now - lastT;
+        if (dt > 0) {
+          const instantV = (delta / dt) * 16; // normalize to ~16ms frame
+          velocity = 0.6 * instantV + 0.4 * velocity;
+        }
+        lastY = currentY;
+        lastT = now;
+
+        scrollByPixels(delta);
       }, { passive: false });
 
       layer.addEventListener('touchend', (e) => {
         if (!moved) {
-          // Prevent browser from firing synthetic click/mousedown
-          // which would steal focus from xterm.js textarea
           e.preventDefault();
           term.focus();
+        } else if (Math.abs(velocity) > STOP_THRESHOLD) {
+          runInertia();
         }
         touchStartY = null;
-        touchAccum = 0;
         moved = false;
       });
 
       layer.addEventListener('touchcancel', () => {
+        stopInertia();
         touchStartY = null;
-        touchAccum = 0;
+        pixelAccum = 0;
         moved = false;
+        velocity = 0;
       });
 
       return layer;
