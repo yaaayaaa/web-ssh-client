@@ -272,7 +272,9 @@
       gap: 4px;
     }
     .key-btn {
-      padding: 6px 10px;
+      width: 48px;
+      height: 36px;
+      padding: 6px 0;
       background: #21262d;
       border: 1px solid #30363d;
       border-radius: 4px;
@@ -282,12 +284,125 @@
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .key-btn:active { background: #30363d; }
     .key-btn.mod-active {
       background: #1f6feb;
       border-color: #1f6feb;
       color: #fff;
+    }
+    #custom-keys-row {
+      display: none;
+      gap: 4px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    #custom-keys-row.has-keys { display: flex; }
+    .settings-btn {
+      width: 48px;
+      height: 36px;
+      padding: 6px 0;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .settings-btn:active { background: #30363d; }
+
+    /* --- Custom Keys Settings Dialog --- */
+    #customkeys-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #customkeys-overlay.show { display: flex; }
+    #customkeys-dialog {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%;
+      max-width: 420px;
+      max-height: 80dvh;
+      overflow-y: auto;
+    }
+    #customkeys-dialog h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+    .ck-list {
+      margin-bottom: 16px;
+    }
+    .ck-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .ck-item-label {
+      color: #c9d1d9;
+      font-weight: 600;
+    }
+    .ck-item-detail {
+      color: #484f58;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .ck-item-del {
+      padding: 2px 6px;
+      background: none;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      font-size: 11px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ck-item-del:hover { color: #f85149; border-color: #f85149; }
+    .ck-empty {
+      color: #484f58;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .ck-add-form { display: flex; flex-direction: column; gap: 10px; }
+    .ck-add-form .form-group select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .ck-add-form .form-group select:focus {
+      outline: none;
+      border-color: #1f6feb;
+    }
+    .ck-hint {
+      font-size: 11px;
+      color: #484f58;
+      margin-top: 2px;
     }
 
     /* --- Saved Connections List --- */
@@ -388,6 +503,7 @@
       <button class="key-btn" data-key="Escape">ESC</button>
       <button class="key-btn" data-key="Tab">TAB</button>
       <button class="key-btn" id="btn-ctrl" data-modifier="ctrl">Ctrl</button>
+      <button class="settings-btn" id="btn-custom-keys" title="Custom Keys">&#x2699;&#xFE0E;</button>
     </div>
     <div class="arrow-keys">
       <div class="arrow-row">
@@ -399,6 +515,7 @@
         <button class="key-btn" data-seq="\x1b[C">→</button>
       </div>
     </div>
+    <div class="toolbar-row" id="custom-keys-row"></div>
   </div>
 
   <div id="connect-overlay">
@@ -439,6 +556,61 @@
           <button type="submit" class="btn btn-primary" id="btn-connect">Connect</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="customkeys-overlay">
+    <div id="customkeys-dialog">
+      <h2>Custom Keys</h2>
+      <div class="ck-list" id="ck-list"></div>
+      <hr class="divider">
+      <div class="ck-add-form" id="ck-add-form">
+        <div class="form-group">
+          <label>Label (button text)</label>
+          <input type="text" id="ck-label" placeholder="e.g. ls, deploy, C-c" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="ck-type">
+            <option value="text">Text / Command</option>
+            <option value="special">Special Key</option>
+          </select>
+        </div>
+        <div class="form-group" id="ck-text-group">
+          <label>Send string</label>
+          <input type="text" id="ck-value" placeholder="e.g. ls -la\n">
+          <div class="ck-hint">Use \n for Enter (newline)</div>
+        </div>
+        <div class="form-group" id="ck-special-group" style="display:none">
+          <label>Special key</label>
+          <select id="ck-special">
+            <option value="\x03">Ctrl+C</option>
+            <option value="\x04">Ctrl+D</option>
+            <option value="\x1a">Ctrl+Z</option>
+            <option value="\x0c">Ctrl+L</option>
+            <option value="\x01">Ctrl+A</option>
+            <option value="\x05">Ctrl+E</option>
+            <option value="\x15">Ctrl+U</option>
+            <option value="\x0b">Ctrl+K</option>
+            <option value="\x1bOP">F1</option>
+            <option value="\x1bOQ">F2</option>
+            <option value="\x1bOR">F3</option>
+            <option value="\x1bOS">F4</option>
+            <option value="\x1b[15~">F5</option>
+            <option value="\x1b[17~">F6</option>
+            <option value="\x1b[18~">F7</option>
+            <option value="\x1b[19~">F8</option>
+            <option value="\x1b[20~">F9</option>
+            <option value="\x1b[21~">F10</option>
+            <option value="\x1b[23~">F11</option>
+            <option value="\x1b[24~">F12</option>
+          </select>
+        </div>
+        <div class="form-actions" style="margin-top:8px">
+          <button type="button" class="btn btn-secondary" id="ck-close">Close</button>
+          <button type="button" class="btn btn-primary" id="ck-add">Add</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1145,6 +1317,168 @@
 
       return layer;
     }
+
+    // --- Custom Keys ---
+    const CUSTOM_KEYS_KEY = 'ssh-custom-keys';
+
+    function generateId() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    }
+
+    function loadCustomKeys() {
+      try {
+        return JSON.parse(localStorage.getItem(CUSTOM_KEYS_KEY)) || [];
+      } catch { return []; }
+    }
+
+    function saveCustomKeys(keys) {
+      localStorage.setItem(CUSTOM_KEYS_KEY, JSON.stringify(keys));
+    }
+
+    // Special key preset labels for display (keys are literal escape notation matching HTML option values)
+    const SPECIAL_KEY_LABELS = {
+      '\\x03': 'Ctrl+C', '\\x04': 'Ctrl+D', '\\x1a': 'Ctrl+Z', '\\x0c': 'Ctrl+L',
+      '\\x01': 'Ctrl+A', '\\x05': 'Ctrl+E', '\\x15': 'Ctrl+U', '\\x0b': 'Ctrl+K',
+      '\\x1bOP': 'F1', '\\x1bOQ': 'F2', '\\x1bOR': 'F3', '\\x1bOS': 'F4',
+      '\\x1b[15~': 'F5', '\\x1b[17~': 'F6', '\\x1b[18~': 'F7', '\\x1b[19~': 'F8',
+      '\\x1b[20~': 'F9', '\\x1b[21~': 'F10', '\\x1b[23~': 'F11', '\\x1b[24~': 'F12',
+    };
+
+    function renderCustomKeys() {
+      const row = document.getElementById('custom-keys-row');
+      const keys = loadCustomKeys();
+      row.innerHTML = '';
+      row.classList.toggle('has-keys', keys.length > 0);
+
+      for (const ck of keys) {
+        const btn = document.createElement('button');
+        btn.className = 'key-btn';
+        btn.textContent = ck.label;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (!activeSessionId) return;
+          const session = termSessions.get(activeSessionId);
+          if (!session || session.ws.readyState !== 1) return;
+
+          let data;
+          if (ck.type === 'special') {
+            data = parseEscSeq(ck.value);
+          } else {
+            // Text type: convert literal \n to actual newline
+            data = ck.value.replace(/\\n/g, '\n');
+          }
+          session.ws.send(JSON.stringify({ type: 'input', data }));
+          session.term.focus({ preventScroll: true });
+        });
+        row.appendChild(btn);
+      }
+    }
+
+    function renderCustomKeysList() {
+      const list = document.getElementById('ck-list');
+      const keys = loadCustomKeys();
+      if (keys.length === 0) {
+        list.innerHTML = '<div class="ck-empty">No custom keys registered.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      for (const ck of keys) {
+        const item = document.createElement('div');
+        item.className = 'ck-item';
+        const detail = ck.type === 'special'
+          ? (SPECIAL_KEY_LABELS[ck.value] || ck.value)
+          : ck.value;
+        item.innerHTML = `
+          <div>
+            <span class="ck-item-label">${escapeHtml(ck.label)}</span>
+            <span class="ck-item-detail">${escapeHtml(detail)}</span>
+          </div>
+        `;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'ck-item-del';
+        delBtn.textContent = '\u00D7';
+        delBtn.addEventListener('click', () => {
+          const updated = loadCustomKeys().filter(k => k.id !== ck.id);
+          saveCustomKeys(updated);
+          renderCustomKeysList();
+          renderCustomKeys();
+        });
+        item.appendChild(delBtn);
+        list.appendChild(item);
+      }
+    }
+
+    // Type toggle
+    document.getElementById('ck-type').addEventListener('change', (e) => {
+      const isSpecial = e.target.value === 'special';
+      document.getElementById('ck-text-group').style.display = isSpecial ? 'none' : '';
+      document.getElementById('ck-special-group').style.display = isSpecial ? '' : 'none';
+    });
+
+    // Open/close custom keys dialog
+    const customkeysOverlay = document.getElementById('customkeys-overlay');
+
+    document.getElementById('btn-custom-keys').addEventListener('click', (e) => {
+      e.preventDefault();
+      renderCustomKeysList();
+      // Reset form
+      document.getElementById('ck-label').value = '';
+      document.getElementById('ck-value').value = '';
+      document.getElementById('ck-type').value = 'text';
+      document.getElementById('ck-text-group').style.display = '';
+      document.getElementById('ck-special-group').style.display = 'none';
+      customkeysOverlay.classList.add('show');
+    });
+
+    document.getElementById('ck-close').addEventListener('click', () => {
+      customkeysOverlay.classList.remove('show');
+      if (activeSessionId) {
+        const session = termSessions.get(activeSessionId);
+        if (session) session.term.focus({ preventScroll: true });
+      }
+    });
+
+    customkeysOverlay.addEventListener('click', (e) => {
+      if (e.target === customkeysOverlay) {
+        customkeysOverlay.classList.remove('show');
+      }
+    });
+
+    // Add custom key
+    document.getElementById('ck-add').addEventListener('click', () => {
+      const label = document.getElementById('ck-label').value.trim();
+      if (!label) return;
+
+      const type = document.getElementById('ck-type').value;
+      let value;
+      if (type === 'special') {
+        value = document.getElementById('ck-special').value;
+      } else {
+        value = document.getElementById('ck-value').value;
+        if (!value) return;
+      }
+
+      const keys = loadCustomKeys();
+      keys.push({
+        id: generateId(),
+        label,
+        type,
+        value,
+      });
+      saveCustomKeys(keys);
+      renderCustomKeysList();
+      renderCustomKeys();
+
+      // Reset inputs
+      document.getElementById('ck-label').value = '';
+      document.getElementById('ck-value').value = '';
+    });
+
+    // Initial render
+    renderCustomKeys();
 
     // --- Keyboard shortcut ---
     document.addEventListener('keydown', (e) => {
