@@ -1,0 +1,233 @@
+const express = require('express');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const { Client: SSHClient } = require('ssh2');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// --- Session Store ---
+// sessionId -> { ssh, stream, buffer, cols, rows, config, createdAt, lastActivity }
+const sessions = new Map();
+
+const BUFFER_MAX = 512 * 1024; // 512KB scrollback buffer per session
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle timeout
+
+// Cleanup idle sessions periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
+      console.log(`[cleanup] Closing idle session ${id}`);
+      destroySession(id);
+    }
+  }
+}, 60 * 1000);
+
+function destroySession(id) {
+  const session = sessions.get(id);
+  if (!session) return;
+  try { session.stream?.close(); } catch {}
+  try { session.ssh?.end(); } catch {}
+  sessions.delete(id);
+}
+
+// --- REST API ---
+
+// List active sessions
+app.get('/api/sessions', (req, res) => {
+  const list = [];
+  for (const [id, s] of sessions) {
+    list.push({
+      id,
+      host: s.config.host,
+      port: s.config.port,
+      username: s.config.username,
+      createdAt: s.createdAt,
+      lastActivity: s.lastActivity,
+    });
+  }
+  res.json(list);
+});
+
+// Create new SSH session
+app.post('/api/sessions', (req, res) => {
+  const { host, port = 22, username, password, privateKey } = req.body;
+
+  if (!host || !username) {
+    return res.status(400).json({ error: 'host and username are required' });
+  }
+
+  const sessionId = uuidv4();
+  const ssh = new SSHClient();
+  const config = { host, port, username };
+
+  const connectConfig = {
+    host,
+    port: parseInt(port, 10),
+    username,
+    readyTimeout: 10000,
+    keepaliveInterval: 15000,
+    keepaliveCountMax: 3,
+  };
+
+  if (privateKey) {
+    connectConfig.privateKey = privateKey;
+  } else if (password) {
+    connectConfig.password = password;
+  }
+
+  // Try keyboard-interactive as fallback
+  connectConfig.tryKeyboard = true;
+
+  ssh.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
+    // Auto-respond with password for keyboard-interactive auth
+    finish([password || '']);
+  });
+
+  ssh.on('ready', () => {
+    ssh.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err, stream) => {
+      if (err) {
+        ssh.end();
+        return res.status(500).json({ error: `Shell error: ${err.message}` });
+      }
+
+      const session = {
+        ssh,
+        stream,
+        buffer: '',
+        cols: 80,
+        rows: 24,
+        config: { host, port, username },
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        wsClients: new Set(),
+      };
+
+      stream.on('data', (data) => {
+        const str = data.toString('utf-8');
+        session.buffer += str;
+        // Cap buffer size
+        if (session.buffer.length > BUFFER_MAX) {
+          session.buffer = session.buffer.slice(-BUFFER_MAX);
+        }
+        session.lastActivity = Date.now();
+        // Broadcast to connected WebSocket clients
+        for (const ws of session.wsClients) {
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'output', data: str }));
+          }
+        }
+      });
+
+      stream.on('close', () => {
+        for (const ws of session.wsClients) {
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'closed' }));
+          }
+        }
+        sessions.delete(sessionId);
+      });
+
+      stream.stderr.on('data', (data) => {
+        const str = data.toString('utf-8');
+        session.buffer += str;
+        for (const ws of session.wsClients) {
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'output', data: str }));
+          }
+        }
+      });
+
+      sessions.set(sessionId, session);
+      res.json({ sessionId, host, port, username });
+    });
+  });
+
+  ssh.on('error', (err) => {
+    console.error(`[ssh] Connection error for ${host}: ${err.message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ error: `SSH error: ${err.message}` });
+    }
+    sessions.delete(sessionId);
+  });
+
+  ssh.connect(connectConfig);
+});
+
+// Delete session
+app.delete('/api/sessions/:id', (req, res) => {
+  const { id } = req.params;
+  if (!sessions.has(id)) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  destroySession(id);
+  res.json({ ok: true });
+});
+
+// Resize session
+app.post('/api/sessions/:id/resize', (req, res) => {
+  const session = sessions.get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  const { cols, rows } = req.body;
+  if (cols && rows) {
+    session.cols = cols;
+    session.rows = rows;
+    try {
+      session.stream.setWindow(rows, cols, 0, 0);
+    } catch {}
+  }
+  res.json({ ok: true });
+});
+
+// --- WebSocket ---
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const sessionId = url.searchParams.get('sessionId');
+
+  if (!sessionId || !sessions.has(sessionId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+    ws.close();
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  session.wsClients.add(ws);
+  session.lastActivity = Date.now();
+
+  // Send buffered output so client catches up
+  if (session.buffer.length > 0) {
+    ws.send(JSON.stringify({ type: 'output', data: session.buffer }));
+  }
+
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'input' && session.stream) {
+        session.stream.write(msg.data);
+        session.lastActivity = Date.now();
+      } else if (msg.type === 'resize' && session.stream) {
+        const { cols, rows } = msg;
+        session.cols = cols;
+        session.rows = rows;
+        try { session.stream.setWindow(rows, cols, 0, 0); } catch {}
+      }
+    } catch {}
+  });
+
+  ws.on('close', () => {
+    session.wsClients.delete(ws);
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Web SSH client running on http://0.0.0.0:${PORT}`);
+});

@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+  <title>Web SSH Client</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { overflow: hidden; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: fixed;
+      width: 100%;
+      top: 0;
+      left: 0;
+    }
+
+    /* --- Header --- */
+    #header {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      flex: 1;
+      scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #8b949e;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: #1f6feb;
+      border-color: #1f6feb;
+      color: #fff;
+    }
+    .tab .close-btn {
+      font-size: 14px;
+      line-height: 1;
+      opacity: 0.6;
+      cursor: pointer;
+    }
+    .tab .close-btn:hover { opacity: 1; }
+    #btn-new {
+      padding: 4px 10px;
+      background: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #btn-new:hover { background: #2ea043; }
+
+    /* --- Connect Dialog --- */
+    #connect-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #connect-overlay.show { display: flex; }
+    #connect-dialog {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%;
+      max-width: 400px;
+    }
+    #connect-dialog h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 4px;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #1f6feb;
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+    .form-row .form-group { flex: 1; }
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-primary { background: #238636; color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+    .btn-secondary:hover { background: #30363d; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error-msg {
+      color: #f85149;
+      font-size: 12px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    /* --- Terminal Area --- */
+    #terminal-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .terminal-wrapper {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: 4px;
+    }
+    .terminal-wrapper.active { display: block; }
+    .terminal-wrapper .xterm { height: 100%; }
+
+    /* --- Empty State --- */
+    #empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #484f58;
+      font-size: 14px;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #empty-state button {
+      padding: 8px 20px;
+      background: #238636;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* --- Mobile toolbar --- */
+    #mobile-toolbar {
+      display: none;
+      flex-shrink: 0;
+      padding: 4px 8px;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      gap: 4px;
+      overflow-x: auto;
+    }
+    @media (max-width: 768px) {
+      #mobile-toolbar { display: flex; }
+    }
+    .key-btn {
+      padding: 6px 10px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      font-size: 12px;
+      font-family: monospace;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .key-btn:active { background: #30363d; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>SSH</h1>
+    <div class="tab-bar" id="tab-bar"></div>
+    <button id="btn-new">+ New</button>
+  </div>
+
+  <div id="terminal-container">
+    <div id="empty-state">
+      <div>No active sessions</div>
+      <button onclick="showConnectDialog()">Connect to a server</button>
+    </div>
+  </div>
+
+  <div id="mobile-toolbar">
+    <button class="key-btn" data-key="Escape">ESC</button>
+    <button class="key-btn" data-key="Tab">TAB</button>
+    <button class="key-btn" data-seq="\x01">C-a</button>
+    <button class="key-btn" data-seq="\x03">C-c</button>
+    <button class="key-btn" data-seq="\x04">C-d</button>
+    <button class="key-btn" data-seq="\x1a">C-z</button>
+    <button class="key-btn" data-seq="\x1b[A">Up</button>
+    <button class="key-btn" data-seq="\x1b[B">Down</button>
+    <button class="key-btn" data-seq="\x1b[D">Left</button>
+    <button class="key-btn" data-seq="\x1b[C">Right</button>
+  </div>
+
+  <div id="connect-overlay">
+    <div id="connect-dialog">
+      <h2>New Connection</h2>
+      <form id="connect-form">
+        <div class="form-row">
+          <div class="form-group" style="flex:3">
+            <label>Host</label>
+            <input type="text" id="f-host" placeholder="192.168.1.1" required>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Port</label>
+            <input type="number" id="f-port" value="22">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="f-username" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="f-password">
+        </div>
+        <div class="form-group">
+          <label>Private Key (optional)</label>
+          <textarea id="f-key" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+        </div>
+        <div class="error-msg" id="connect-error"></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="hideConnectDialog()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-connect">Connect</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+  <script>
+    // --- State ---
+    const termSessions = new Map(); // sessionId -> { term, fitAddon, ws, el, config }
+    let activeSessionId = null;
+
+    // --- DOM refs ---
+    const tabBar = document.getElementById('tab-bar');
+    const container = document.getElementById('terminal-container');
+    const emptyState = document.getElementById('empty-state');
+    const connectOverlay = document.getElementById('connect-overlay');
+    const connectForm = document.getElementById('connect-form');
+    const connectError = document.getElementById('connect-error');
+    const btnConnect = document.getElementById('btn-connect');
+
+    // --- Init: load existing sessions ---
+    async function init() {
+      try {
+        const res = await fetch('/api/sessions');
+        const sessions = await res.json();
+        for (const s of sessions) {
+          attachSession(s.id, s);
+        }
+      } catch {}
+    }
+
+    // --- Connect Dialog ---
+    function showConnectDialog() {
+      connectOverlay.classList.add('show');
+      document.getElementById('f-host').focus();
+    }
+    function hideConnectDialog() {
+      connectOverlay.classList.remove('show');
+      connectError.style.display = 'none';
+      connectForm.reset();
+      document.getElementById('f-port').value = '22';
+    }
+
+    document.getElementById('btn-new').addEventListener('click', showConnectDialog);
+
+    connectForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      connectError.style.display = 'none';
+      btnConnect.disabled = true;
+      btnConnect.textContent = 'Connecting...';
+
+      const body = {
+        host: document.getElementById('f-host').value.trim(),
+        port: parseInt(document.getElementById('f-port').value) || 22,
+        username: document.getElementById('f-username').value.trim(),
+        password: document.getElementById('f-password').value,
+        privateKey: document.getElementById('f-key').value.trim() || undefined,
+      };
+
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Connection failed');
+
+        hideConnectDialog();
+        attachSession(data.sessionId, data);
+      } catch (err) {
+        connectError.textContent = err.message;
+        connectError.style.display = 'block';
+      } finally {
+        btnConnect.disabled = false;
+        btnConnect.textContent = 'Connect';
+      }
+    });
+
+    // Close overlay on backdrop click
+    connectOverlay.addEventListener('click', (e) => {
+      if (e.target === connectOverlay) hideConnectDialog();
+    });
+
+    // --- Session Management ---
+    function attachSession(sessionId, config) {
+      // Create terminal element
+      const wrapper = document.createElement('div');
+      wrapper.className = 'terminal-wrapper';
+      wrapper.id = `term-${sessionId}`;
+      container.appendChild(wrapper);
+
+      const term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: "'Menlo', 'DejaVu Sans Mono', 'Consolas', monospace",
+        theme: {
+          background: '#0d1117',
+          foreground: '#c9d1d9',
+          cursor: '#58a6ff',
+          selectionBackground: '#264f78',
+        },
+        allowProposedApi: true,
+      });
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(wrapper);
+      fitAddon.fit();
+
+      // WebSocket
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}`);
+
+      ws.onopen = () => {
+        // Send initial size
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            term.write(msg.data);
+          } else if (msg.type === 'closed') {
+            term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
+            removeSession(sessionId);
+          } else if (msg.type === 'error') {
+            term.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        // WebSocket disconnected but session may still be alive on server
+        term.write('\r\n\x1b[33m--- Disconnected from server, reconnecting... ---\x1b[0m\r\n');
+        setTimeout(() => reconnectWs(sessionId), 2000);
+      };
+
+      term.onData((data) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'input', data }));
+        }
+      });
+
+      term.onResize(({ cols, rows }) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+      });
+
+      // --- Touch scroll → mouse wheel for tmux ---
+      setupTouchScroll(wrapper, term, () => termSessions.get(sessionId)?.ws);
+
+      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config });
+      activateSession(sessionId);
+      renderTabs();
+    }
+
+    function reconnectWs(sessionId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}`);
+
+      ws.onopen = () => {
+        session.term.write('\r\n\x1b[32m--- Reconnected ---\x1b[0m\r\n');
+        ws.send(JSON.stringify({ type: 'resize', cols: session.term.cols, rows: session.term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            session.term.write(msg.data);
+          } else if (msg.type === 'closed') {
+            session.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
+            removeSession(sessionId);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        setTimeout(() => reconnectWs(sessionId), 3000);
+      };
+
+      session.term.onData((data) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'input', data }));
+        }
+      });
+
+      session.ws = ws;
+    }
+
+    function activateSession(sessionId) {
+      activeSessionId = sessionId;
+      for (const [id, s] of termSessions) {
+        s.el.classList.toggle('active', id === sessionId);
+      }
+      emptyState.style.display = termSessions.size > 0 ? 'none' : 'flex';
+      const session = termSessions.get(sessionId);
+      if (session) {
+        requestAnimationFrame(() => {
+          session.fitAddon.fit();
+          session.term.focus();
+        });
+      }
+      renderTabs();
+    }
+
+    function removeSession(sessionId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      try { session.ws.close(); } catch {}
+      session.term.dispose();
+      session.el.remove();
+      termSessions.delete(sessionId);
+
+      if (activeSessionId === sessionId) {
+        const remaining = [...termSessions.keys()];
+        if (remaining.length > 0) {
+          activateSession(remaining[remaining.length - 1]);
+        } else {
+          activeSessionId = null;
+          emptyState.style.display = 'flex';
+        }
+      }
+      renderTabs();
+    }
+
+    async function closeSession(sessionId) {
+      try {
+        await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      } catch {}
+      removeSession(sessionId);
+    }
+
+    // --- Tabs ---
+    function renderTabs() {
+      tabBar.innerHTML = '';
+      for (const [id, s] of termSessions) {
+        const tab = document.createElement('div');
+        tab.className = `tab${id === activeSessionId ? ' active' : ''}`;
+        const label = `${s.config.username || ''}@${s.config.host || ''}`;
+        tab.innerHTML = `
+          <span class="tab-label">${label}</span>
+          <span class="close-btn" title="Close">&times;</span>
+        `;
+        tab.querySelector('.tab-label').addEventListener('click', () => activateSession(id));
+        tab.querySelector('.close-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeSession(id);
+        });
+        tabBar.appendChild(tab);
+      }
+    }
+
+    // --- Resize (including mobile keyboard) ---
+    function fitActiveTerminal() {
+      if (!activeSessionId) return;
+      const session = termSessions.get(activeSessionId);
+      if (session) session.fitAddon.fit();
+    }
+
+    window.addEventListener('resize', fitActiveTerminal);
+
+    // Use visualViewport to handle mobile keyboard open/close
+    if (window.visualViewport) {
+      let pendingFit = null;
+      window.visualViewport.addEventListener('resize', () => {
+        // Update body height to match visible area (excludes keyboard)
+        document.body.style.height = `${window.visualViewport.height}px`;
+        // Debounce fit to avoid excessive reflows during keyboard animation
+        if (pendingFit) cancelAnimationFrame(pendingFit);
+        pendingFit = requestAnimationFrame(() => {
+          fitActiveTerminal();
+          pendingFit = null;
+        });
+      });
+      window.visualViewport.addEventListener('scroll', () => {
+        // Prevent iOS from scrolling the page when keyboard opens
+        window.scrollTo(0, 0);
+      });
+      // Set initial height
+      document.body.style.height = `${window.visualViewport.height}px`;
+    }
+
+    // --- Mobile toolbar ---
+    document.querySelectorAll('.key-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!activeSessionId) return;
+        const session = termSessions.get(activeSessionId);
+        if (!session) return;
+        const seq = btn.dataset.seq;
+        const key = btn.dataset.key;
+        if (seq) {
+          session.term.input(seq);
+          if (session.ws.readyState === 1) {
+            session.ws.send(JSON.stringify({ type: 'input', data: seq }));
+          }
+        } else if (key === 'Escape') {
+          const data = '\x1b';
+          session.term.input(data);
+          if (session.ws.readyState === 1) {
+            session.ws.send(JSON.stringify({ type: 'input', data }));
+          }
+        } else if (key === 'Tab') {
+          const data = '\t';
+          session.term.input(data);
+          if (session.ws.readyState === 1) {
+            session.ws.send(JSON.stringify({ type: 'input', data }));
+          }
+        }
+        session.term.focus();
+      });
+    });
+
+    // --- Touch scroll → mouse wheel escape sequences ---
+    // Converts touch swipe gestures into mouse wheel events that tmux understands.
+    // Works with both legacy (X10/normal) and SGR mouse encoding.
+    function setupTouchScroll(wrapper, term, getWs) {
+      let touchStartY = null;
+      let touchAccum = 0;
+      const SCROLL_THRESHOLD = 15; // px per scroll line
+      const LINES_PER_TICK = 3;    // scroll lines per threshold hit
+
+      wrapper.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        touchStartY = e.touches[0].clientY;
+        touchAccum = 0;
+      }, { passive: true });
+
+      wrapper.addEventListener('touchmove', (e) => {
+        if (touchStartY === null || e.touches.length !== 1) return;
+        const currentY = e.touches[0].clientY;
+        const delta = touchStartY - currentY;
+        touchAccum += delta;
+        touchStartY = currentY;
+
+        // Convert accumulated distance into scroll ticks
+        while (Math.abs(touchAccum) >= SCROLL_THRESHOLD) {
+          const scrollUp = touchAccum < 0;
+          touchAccum += scrollUp ? SCROLL_THRESHOLD : -SCROLL_THRESHOLD;
+
+          const ws = getWs();
+          if (!ws || ws.readyState !== 1) continue;
+
+          // Send mouse wheel sequences (repeat for faster scroll feel)
+          for (let i = 0; i < LINES_PER_TICK; i++) {
+            // SGR encoding: \x1b[<64;col;rowM (up) / \x1b[<65;col;rowM (down)
+            // Use center of terminal as coordinates
+            const col = Math.floor(term.cols / 2);
+            const row = Math.floor(term.rows / 2);
+            const btn = scrollUp ? 64 : 65;
+            const sgr = `\x1b[<${btn};${col};${row}M`;
+
+            // Legacy encoding: \x1b[M + (btn+32) + (col+33) + (row+33)
+            const legacyBtn = (scrollUp ? 64 : 65) + 32;
+            const legacy = `\x1b[M${String.fromCharCode(legacyBtn)}${String.fromCharCode(col + 33)}${String.fromCharCode(row + 33)}`;
+
+            // Send both — the terminal application will use whichever mode it has enabled
+            // SGR is tried first as it's the modern standard
+            ws.send(JSON.stringify({ type: 'input', data: sgr }));
+          }
+        }
+
+        // Prevent page scroll while swiping on terminal
+        e.preventDefault();
+      }, { passive: false });
+
+      wrapper.addEventListener('touchend', () => {
+        touchStartY = null;
+        touchAccum = 0;
+      }, { passive: true });
+
+      wrapper.addEventListener('touchcancel', () => {
+        touchStartY = null;
+        touchAccum = 0;
+      }, { passive: true });
+    }
+
+    // --- Keyboard shortcut ---
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+N: new connection
+      if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+        e.preventDefault();
+        showConnectDialog();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
