@@ -74,6 +74,31 @@
       cursor: pointer;
     }
     .tab .close-btn:hover { opacity: 1; }
+    .font-size-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .font-size-controls button {
+      padding: 4px 8px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .font-size-controls button:hover { background: #30363d; }
+    .font-size-controls .font-size-label {
+      font-size: 11px;
+      color: #8b949e;
+      min-width: 20px;
+      text-align: center;
+      user-select: none;
+    }
     #btn-new {
       padding: 4px 10px;
       background: #238636;
@@ -328,6 +353,11 @@
   <div id="header">
     <h1>SSH</h1>
     <div class="tab-bar" id="tab-bar"></div>
+    <div class="font-size-controls">
+      <button id="btn-font-dec" title="Decrease font size">A-</button>
+      <span class="font-size-label" id="font-size-label">14</span>
+      <button id="btn-font-inc" title="Increase font size">A+</button>
+    </div>
     <button id="btn-new">+ New</button>
   </div>
 
@@ -396,6 +426,57 @@
     const termSessions = new Map(); // sessionId -> { term, fitAddon, ws, el, config }
     let activeSessionId = null;
 
+    // --- Font size ---
+    const FONT_SIZE_MIN = 8;
+    const FONT_SIZE_MAX = 24;
+    const FONT_SIZE_KEY = 'ssh-font-size';
+
+    function getStoredFontSize() {
+      const v = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10);
+      return (v >= FONT_SIZE_MIN && v <= FONT_SIZE_MAX) ? v : 14;
+    }
+
+    let currentFontSize = getStoredFontSize();
+
+    function updateFontSizeLabel() {
+      document.getElementById('font-size-label').textContent = currentFontSize;
+    }
+
+    function applyFontSizeToAll(size) {
+      currentFontSize = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
+      localStorage.setItem(FONT_SIZE_KEY, currentFontSize);
+      updateFontSizeLabel();
+      for (const [, session] of termSessions) {
+        session.term.options.fontSize = currentFontSize;
+        session.fitAddon.fit();
+        if (session.ws.readyState === 1) {
+          session.ws.send(JSON.stringify({
+            type: 'resize',
+            cols: session.term.cols,
+            rows: session.term.rows,
+          }));
+        }
+      }
+    }
+
+    // --- Active tab persistence ---
+    const ACTIVE_TAB_KEY = 'ssh-active-tab';
+
+    function saveActiveTab() {
+      let i = 0;
+      for (const [id] of termSessions) {
+        if (id === activeSessionId) {
+          localStorage.setItem(ACTIVE_TAB_KEY, i);
+          return;
+        }
+        i++;
+      }
+    }
+
+    function loadActiveTabIndex() {
+      return parseInt(localStorage.getItem(ACTIVE_TAB_KEY), 10) || 0;
+    }
+
     // --- DOM refs ---
     const tabBar = document.getElementById('tab-bar');
     const container = document.getElementById('terminal-container');
@@ -405,8 +486,11 @@
     const connectError = document.getElementById('connect-error');
     const btnConnect = document.getElementById('btn-connect');
 
-    // --- Init: load existing sessions ---
+    // --- Init: load existing sessions or restore from localStorage ---
     async function init() {
+      // Read before attachSession loop overwrites it
+      const savedIndex = loadActiveTabIndex();
+
       try {
         const res = await fetch('/api/sessions');
         const sessions = await res.json();
@@ -414,6 +498,13 @@
           attachSession(s.id, s);
         }
       } catch {}
+
+      // Restore the previously active tab
+      const sessionIds = [...termSessions.keys()];
+      if (sessionIds.length > 0) {
+        const targetId = sessionIds[Math.min(savedIndex, sessionIds.length - 1)];
+        activateSession(targetId);
+      }
     }
 
     // --- Saved Connections ---
@@ -521,6 +612,15 @@
 
     document.getElementById('btn-new').addEventListener('click', showConnectDialog);
 
+    // Font size buttons
+    updateFontSizeLabel();
+    document.getElementById('btn-font-dec').addEventListener('click', () => {
+      applyFontSizeToAll(currentFontSize - 1);
+    });
+    document.getElementById('btn-font-inc').addEventListener('click', () => {
+      applyFontSizeToAll(currentFontSize + 1);
+    });
+
     connectForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       connectError.style.display = 'none';
@@ -581,7 +681,7 @@
 
       const term = new Terminal({
         cursorBlink: true,
-        fontSize: 14,
+        fontSize: currentFontSize,
         fontFamily: "'JetBrains Mono', monospace",
         theme: {
           background: '#0d1117',
@@ -691,6 +791,7 @@
         });
       }
       renderTabs();
+      saveActiveTab();
     }
 
     function removeSession(sessionId) {
