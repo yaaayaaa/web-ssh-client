@@ -4,6 +4,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { Client: SSHClient } = require('ssh2');
+const { StringDecoder } = require('string_decoder');
 
 const fs = require('fs');
 
@@ -185,9 +186,14 @@ app.post('/api/sessions', (req, res) => {
         return res.status(500).json({ error: `Shell error: ${err.message}` });
       }
 
+      // StringDecoder buffers incomplete multi-byte UTF-8 sequences
+      // across chunk boundaries, preventing replacement characters.
+      const decoder = new StringDecoder('utf8');
+
       const session = {
         ssh,
         stream,
+        decoder,
         buffer: '',
         cols: 80,
         rows: 24,
@@ -198,7 +204,7 @@ app.post('/api/sessions', (req, res) => {
       };
 
       stream.on('data', (data) => {
-        const str = data.toString('utf-8');
+        const str = decoder.write(data);
         session.buffer += str;
         // Cap buffer size
         if (session.buffer.length > BUFFER_MAX) {
@@ -222,8 +228,9 @@ app.post('/api/sessions', (req, res) => {
         sessions.delete(sessionId);
       });
 
+      const stderrDecoder = new StringDecoder('utf8');
       stream.stderr.on('data', (data) => {
-        const str = data.toString('utf-8');
+        const str = stderrDecoder.write(data);
         session.buffer += str;
         for (const ws of session.wsClients) {
           if (ws.readyState === 1) {

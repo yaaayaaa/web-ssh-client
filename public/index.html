@@ -810,12 +810,11 @@
     // Intercept keyboard input when Ctrl toggle is active.
     // xterm.js onData fires for normal key presses — we intercept and
     // convert to Ctrl+key (byte = key charCode - 64 for A-Z, or special cases).
-    // Force text presentation for characters that mobile renders as emoji.
-    // Insert U+FE0E (Variation Selector 15) after characters with emoji defaults.
-    // Regex matches codepoints commonly rendered as color emoji on mobile.
-    const EMOJI_DEFAULT_RE = /[\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9-\u21AA\u231A-\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA-\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u27BF\u2934-\u2935\u2B05-\u2B07\u2B1B-\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299](?!\uFE0E)/g;
+
+    // Force text presentation for characters that mobile renders as color emoji.
+    const EMOJI_FORCE_TEXT_RE = /[\u25B6\u25C0\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55](?!\uFE0E)/g;
     function forceTextPresentation(str) {
-      return str.replace(EMOJI_DEFAULT_RE, '$&\uFE0E');
+      return str.replace(EMOJI_FORCE_TEXT_RE, '$&\uFE0E');
     }
 
     // Filter out terminal auto-responses that xterm.js generates.
