@@ -941,8 +941,9 @@
       wrapOnData(term, ws);
 
       term.onResize(({ cols, rows }) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        const cur = termSessions.get(sessionId);
+        if (cur && cur.ws.readyState === 1) {
+          cur.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
         }
       });
 
