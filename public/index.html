@@ -77,25 +77,24 @@
     .font-size-controls {
       display: flex;
       align-items: center;
-      gap: 2px;
-      flex-shrink: 0;
+      gap: 4px;
     }
     .font-size-controls button {
-      padding: 4px 8px;
+      padding: 6px 12px;
       background: #21262d;
       border: 1px solid #30363d;
       border-radius: 6px;
       color: #c9d1d9;
-      font-size: 12px;
+      font-size: 13px;
       cursor: pointer;
       white-space: nowrap;
       line-height: 1;
     }
     .font-size-controls button:hover { background: #30363d; }
     .font-size-controls .font-size-label {
-      font-size: 11px;
-      color: #8b949e;
-      min-width: 20px;
+      font-size: 14px;
+      color: #c9d1d9;
+      min-width: 28px;
       text-align: center;
       user-select: none;
     }
@@ -500,11 +499,6 @@
   <div id="header">
     <h1>SSH</h1>
     <div class="tab-bar" id="tab-bar"></div>
-    <div class="font-size-controls">
-      <button id="btn-font-dec" title="Decrease font size">A-</button>
-      <span class="font-size-label" id="font-size-label">14</span>
-      <button id="btn-font-inc" title="Increase font size">A+</button>
-    </div>
     <button id="btn-new">+ New</button>
   </div>
 
@@ -563,7 +557,7 @@
 
   <div id="customkeys-overlay">
     <div id="customkeys-dialog">
-      <h2>Toolbar Keys</h2>
+      <h2>Settings</h2>
       <div class="ck-section-label">Layout</div>
       <div class="grid-editor-wrap" id="grid-editor-wrap">
         <div class="grid-editor" id="grid-editor"></div>
@@ -618,9 +612,19 @@
           </select>
         </div>
         <div class="form-actions" style="margin-top:8px">
-          <button type="button" class="btn btn-secondary" id="ck-close">Close</button>
           <button type="button" class="btn btn-primary" id="ck-add">Add</button>
         </div>
+      </div>
+      <hr class="divider">
+      <div class="ck-section-label">Font Size</div>
+      <div class="font-size-controls">
+        <button id="btn-font-dec" title="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">14</span>
+        <button id="btn-font-inc" title="Increase font size">A+</button>
+      </div>
+      <hr class="divider">
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="ck-close">Close</button>
       </div>
     </div>
   </div>
