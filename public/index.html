@@ -1615,7 +1615,7 @@
       saveCustomKeys(keys);
 
       // Add to grid at first empty cell
-      const grid = getFullGrid();
+      const grid = loadToolbarLayout();
       const pos = findEmptyCell(grid);
       grid.push({ id: newId, row: pos.row, col: pos.col });
       saveToolbarLayout(grid);
