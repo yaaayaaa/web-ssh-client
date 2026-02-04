@@ -946,7 +946,14 @@
         }
       });
 
-      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker });
+      // Observe wrapper visibility changes (e.g. tab switch: display:none → block)
+      // so fit runs as a callback when the element actually gains dimensions.
+      const wrapperRo = new ResizeObserver(() => {
+        if (wrapper.classList.contains('active')) fitAddon.fit();
+      });
+      wrapperRo.observe(wrapper);
+
+      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo });
 
       setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
       activateSession(sessionId);
@@ -995,10 +1002,9 @@
       emptyState.style.display = termSessions.size > 0 ? 'none' : 'flex';
       const session = termSessions.get(sessionId);
       if (session) {
-        requestAnimationFrame(() => {
-          session.fitAddon.fit();
-          session.term.focus();
-        });
+        // ResizeObserver on the wrapper will call fit() when it gains dimensions.
+        // Focus the terminal after layout settles.
+        requestAnimationFrame(() => session.term.focus());
       }
       renderTabs();
       saveActiveTab();
@@ -1008,6 +1014,7 @@
       const session = termSessions.get(sessionId);
       if (!session) return;
       try { session.ws.close(); } catch {}
+      session.wrapperRo.disconnect();
       session.term.dispose();
       session.el.remove();
       termSessions.delete(sessionId);
@@ -1058,27 +1065,29 @@
       if (session) session.fitAddon.fit();
     }
 
+    // ResizeObserver on terminal container: fires as a callback when the
+    // container's actual dimensions change (keyboard open/close, orientation
+    // change, window resize). No setTimeout — the observer itself is the
+    // callback that fires after CSS layout recalculates.
+    {
+      const ro = new ResizeObserver(() => fitActiveTerminal());
+      ro.observe(document.getElementById('terminal-container'));
+    }
+
     window.addEventListener('resize', fitActiveTerminal);
 
-    // Use visualViewport to handle mobile keyboard open/close
+    // Use visualViewport to adjust body height for mobile keyboard.
+    // The height change propagates through flex layout to terminal-container,
+    // which triggers the ResizeObserver above — no manual fit calls needed.
     if (window.visualViewport) {
-      let pendingFit = null;
-      window.visualViewport.addEventListener('resize', () => {
-        // Update body height to match visible area (excludes keyboard)
+      const applyViewportHeight = () => {
         document.body.style.height = `${window.visualViewport.height}px`;
-        // Debounce fit to avoid excessive reflows during keyboard animation
-        if (pendingFit) cancelAnimationFrame(pendingFit);
-        pendingFit = requestAnimationFrame(() => {
-          fitActiveTerminal();
-          pendingFit = null;
-        });
-      });
+      };
+      window.visualViewport.addEventListener('resize', applyViewportHeight);
       window.visualViewport.addEventListener('scroll', () => {
-        // Prevent iOS from scrolling the page when keyboard opens
         window.scrollTo(0, 0);
       });
-      // Set initial height
-      document.body.style.height = `${window.visualViewport.height}px`;
+      applyViewportHeight();
     }
 
     // --- Mobile toolbar ---
