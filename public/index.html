@@ -251,30 +251,26 @@
       background: #161b22;
       border-top: 1px solid #30363d;
       gap: 4px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      align-items: center;
     }
     @media (max-width: 768px) {
       #mobile-toolbar { display: flex; }
     }
-    .toolbar-row {
-      display: flex;
+    #toolbar-keys {
+      display: grid;
+      grid-template-rows: repeat(2, 36px);
+      grid-auto-columns: 48px;
       gap: 4px;
       flex: 1;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
-    .arrow-keys {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      align-items: center;
-    }
-    .arrow-row {
-      display: flex;
-      gap: 4px;
-    }
+    #toolbar-keys::-webkit-scrollbar { display: none; }
     .key-btn {
-      width: 48px;
+      min-width: 48px;
       height: 36px;
-      padding: 6px 0;
+      padding: 6px 4px;
       background: #21262d;
       border: 1px solid #30363d;
       border-radius: 4px;
@@ -283,7 +279,6 @@
       font-family: 'JetBrains Mono', monospace;
       cursor: pointer;
       white-space: nowrap;
-      flex-shrink: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -294,15 +289,8 @@
       border-color: #1f6feb;
       color: #fff;
     }
-    #custom-keys-row {
-      display: none;
-      gap: 4px;
-      flex-wrap: wrap;
-      width: 100%;
-    }
-    #custom-keys-row.has-keys { display: flex; }
     .settings-btn {
-      width: 48px;
+      width: 36px;
       height: 36px;
       padding: 6px 0;
       background: #21262d;
@@ -313,7 +301,6 @@
       font-family: 'JetBrains Mono', monospace;
       cursor: pointer;
       flex-shrink: 0;
-      margin-left: auto;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -345,45 +332,6 @@
       font-size: 16px;
       margin-bottom: 16px;
     }
-    .ck-list {
-      margin-bottom: 16px;
-    }
-    .ck-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      margin-bottom: 4px;
-      font-size: 13px;
-    }
-    .ck-item-label {
-      color: #c9d1d9;
-      font-weight: 600;
-    }
-    .ck-item-detail {
-      color: #484f58;
-      font-size: 11px;
-      margin-left: 8px;
-    }
-    .ck-item-del {
-      padding: 2px 6px;
-      background: none;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      color: #8b949e;
-      font-size: 11px;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .ck-item-del:hover { color: #f85149; border-color: #f85149; }
-    .ck-empty {
-      color: #484f58;
-      font-size: 12px;
-      margin-bottom: 12px;
-    }
     .ck-add-form { display: flex; flex-direction: column; gap: 10px; }
     .ck-add-form .form-group select {
       width: 100%;
@@ -404,6 +352,75 @@
       color: #484f58;
       margin-top: 2px;
     }
+    .ck-section-label {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 8px;
+    }
+    .grid-editor-wrap {
+      overflow-x: auto;
+      margin-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .grid-editor-wrap::-webkit-scrollbar { display: none; }
+    .grid-editor {
+      display: grid;
+      grid-template-rows: repeat(2, 40px);
+      grid-auto-columns: 52px;
+      gap: 4px;
+      width: max-content;
+    }
+    .grid-cell {
+      width: 52px;
+      height: 40px;
+      border: 1px dashed #30363d;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #484f58;
+      cursor: pointer;
+      user-select: none;
+    }
+    .grid-cell:hover { border-color: #484f58; }
+    .grid-cell.occupied {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      font-size: 12px;
+    }
+    .grid-cell.selected {
+      border-color: #1f6feb;
+      box-shadow: 0 0 0 1px #1f6feb;
+    }
+    .grid-cell.drop-target {
+      border-color: #238636;
+      background: rgba(35, 134, 54, 0.1);
+    }
+    .grid-editor-hint {
+      font-size: 11px;
+      color: #484f58;
+      margin-bottom: 12px;
+    }
+    .grid-editor-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .grid-editor-actions button {
+      padding: 4px 10px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .grid-editor-actions button:hover { color: #c9d1d9; border-color: #8b949e; }
+    .grid-editor-actions button.danger:hover { color: #f85149; border-color: #f85149; }
+    .grid-editor-actions button:disabled { opacity: 0.3; cursor: default; }
 
     /* --- Saved Connections List --- */
     .saved-list {
@@ -499,23 +516,8 @@
   </div>
 
   <div id="mobile-toolbar">
-    <div class="toolbar-row">
-      <button class="key-btn" data-key="Escape">ESC</button>
-      <button class="key-btn" data-key="Tab">TAB</button>
-      <button class="key-btn" id="btn-ctrl" data-modifier="ctrl">Ctrl</button>
-      <button class="settings-btn" id="btn-custom-keys" title="Custom Keys">&#x2699;&#xFE0E;</button>
-    </div>
-    <div class="arrow-keys">
-      <div class="arrow-row">
-        <button class="key-btn" data-seq="\x1b[A">↑</button>
-      </div>
-      <div class="arrow-row">
-        <button class="key-btn" data-seq="\x1b[D">←</button>
-        <button class="key-btn" data-seq="\x1b[B">↓</button>
-        <button class="key-btn" data-seq="\x1b[C">→</button>
-      </div>
-    </div>
-    <div class="toolbar-row" id="custom-keys-row"></div>
+    <div id="toolbar-keys"></div>
+    <button class="settings-btn" id="btn-custom-keys" title="Custom Keys">&#x2699;&#xFE0E;</button>
   </div>
 
   <div id="connect-overlay">
@@ -561,9 +563,18 @@
 
   <div id="customkeys-overlay">
     <div id="customkeys-dialog">
-      <h2>Custom Keys</h2>
-      <div class="ck-list" id="ck-list"></div>
+      <h2>Toolbar Keys</h2>
+      <div class="ck-section-label">Layout</div>
+      <div class="grid-editor-wrap" id="grid-editor-wrap">
+        <div class="grid-editor" id="grid-editor"></div>
+      </div>
+      <div class="grid-editor-hint" id="grid-editor-hint">Tap a key, then tap an empty cell to move it.</div>
+      <div class="grid-editor-actions" id="grid-editor-actions">
+        <button id="ge-deselect" disabled>Deselect</button>
+        <button id="ge-delete" class="danger" disabled>Delete</button>
+      </div>
       <hr class="divider">
+      <div class="ck-section-label">Add Custom Key</div>
       <div class="ck-add-form" id="ck-add-form">
         <div class="form-group">
           <label>Label (button text)</label>
@@ -1075,48 +1086,147 @@
 
     // Ctrl toggle state
     let ctrlActive = false;
-    const btnCtrl = document.getElementById('btn-ctrl');
+    let ctrlBtnEl = null; // set by renderToolbar
 
     function setCtrl(active) {
       ctrlActive = active;
-      btnCtrl.classList.toggle('mod-active', active);
+      if (ctrlBtnEl) ctrlBtnEl.classList.toggle('mod-active', active);
     }
 
-    btnCtrl.addEventListener('click', (e) => {
-      e.preventDefault();
-      setCtrl(!ctrlActive);
-      // Re-focus terminal without triggering viewport scroll
-      if (activeSessionId) {
-        const session = termSessions.get(activeSessionId);
-        if (session) session.term.focus({ preventScroll: true });
-      }
-    });
+    // --- Builtin keys definition ---
+    const BUILTIN_KEYS = {
+      'escape':      { label: 'ESC',  handler: () => '\x1b' },
+      'tab':         { label: 'TAB',  handler: () => '\t' },
+      'ctrl':        { label: 'Ctrl', modifier: true },
+      'arrow-up':    { label: '↑',   handler: () => parseEscSeq('\\x1b[A') },
+      'arrow-down':  { label: '↓',   handler: () => parseEscSeq('\\x1b[B') },
+      'arrow-left':  { label: '←',   handler: () => parseEscSeq('\\x1b[D') },
+      'arrow-right': { label: '→',   handler: () => parseEscSeq('\\x1b[C') },
+    };
 
-    document.querySelectorAll('.key-btn:not([data-modifier])').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (!activeSessionId) return;
-        const session = termSessions.get(activeSessionId);
-        if (!session || session.ws.readyState !== 1) return;
-        let data;
-        const seq = btn.dataset.seq;
-        const key = btn.dataset.key;
-        if (seq) {
-          data = parseEscSeq(seq);
-        } else if (key === 'Escape') {
-          data = '\x1b';
-        } else if (key === 'Tab') {
-          data = '\t';
+    // Grid layout: array of { id, row, col }
+    const DEFAULT_GRID = [
+      { id: 'escape',      row: 0, col: 0 },
+      { id: 'tab',         row: 0, col: 1 },
+      { id: 'ctrl',        row: 0, col: 2 },
+      { id: 'arrow-up',    row: 0, col: 3 },
+      { id: 'arrow-left',  row: 1, col: 2 },
+      { id: 'arrow-down',  row: 1, col: 3 },
+      { id: 'arrow-right', row: 1, col: 4 },
+    ];
+    const TOOLBAR_LAYOUT_KEY = 'ssh-toolbar-layout';
+
+    function loadToolbarLayout() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(TOOLBAR_LAYOUT_KEY));
+        if (Array.isArray(stored) && stored.length > 0 && stored[0].id) return stored;
+      } catch {}
+      return DEFAULT_GRID.map(e => ({ ...e }));
+    }
+
+    function saveToolbarLayout(layout) {
+      localStorage.setItem(TOOLBAR_LAYOUT_KEY, JSON.stringify(layout));
+    }
+
+    function getFullGrid() {
+      const grid = loadToolbarLayout();
+      const placedIds = new Set(grid.map(e => e.id));
+      const customKeys = loadCustomKeys();
+      const customIds = new Set(customKeys.map(k => k.id));
+      const validIds = new Set([...Object.keys(BUILTIN_KEYS), ...customIds]);
+
+      // Ensure all builtin keys are placed
+      for (const id of Object.keys(BUILTIN_KEYS)) {
+        if (!placedIds.has(id)) {
+          grid.push({ id, row: 0, col: getMaxCol(grid) + 1 });
         }
-        if (data) {
-          session.ws.send(JSON.stringify({ type: 'input', data }));
+      }
+      // Ensure all custom keys are placed
+      for (const ck of customKeys) {
+        if (!placedIds.has(ck.id)) {
+          grid.push({ id: ck.id, ...findEmptyCell(grid) });
         }
-        // Ctrl auto-deactivates after sending a non-modifier key
-        if (ctrlActive) setCtrl(false);
-        // Re-focus terminal without triggering viewport scroll
-        session.term.focus({ preventScroll: true });
-      });
-    });
+      }
+      // Remove entries for keys that no longer exist
+      return grid.filter(e => validIds.has(e.id));
+    }
+
+    function getMaxCol(grid) {
+      return grid.reduce((max, e) => Math.max(max, e.col), -1);
+    }
+
+    function findEmptyCell(grid) {
+      const occupied = new Set(grid.map(e => `${e.row},${e.col}`));
+      const maxCol = getMaxCol(grid);
+      // Try to find empty cell in existing columns first
+      for (let c = 0; c <= maxCol; c++) {
+        for (let r = 0; r < 2; r++) {
+          if (!occupied.has(`${r},${c}`)) return { row: r, col: c };
+        }
+      }
+      // Append new column
+      return { row: 0, col: maxCol + 1 };
+    }
+
+    function createKeyButton(id, builtin, ck) {
+      const btn = document.createElement('button');
+      btn.className = 'key-btn';
+      btn.textContent = builtin ? builtin.label : ck.label;
+
+      if (builtin && builtin.modifier) {
+        ctrlBtnEl = btn;
+        if (ctrlActive) btn.classList.add('mod-active');
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          setCtrl(!ctrlActive);
+          if (activeSessionId) {
+            const session = termSessions.get(activeSessionId);
+            if (session) session.term.focus({ preventScroll: true });
+          }
+        });
+      } else {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (!activeSessionId) return;
+          const session = termSessions.get(activeSessionId);
+          if (!session || session.ws.readyState !== 1) return;
+          let data;
+          if (builtin) {
+            data = builtin.handler();
+          } else if (ck.type === 'special') {
+            data = parseEscSeq(ck.value);
+          } else {
+            data = ck.value.replace(/\\n/g, '\n');
+          }
+          if (data) session.ws.send(JSON.stringify({ type: 'input', data }));
+          if (ctrlActive) setCtrl(false);
+          session.term.focus({ preventScroll: true });
+        });
+      }
+      return btn;
+    }
+
+    function renderToolbar() {
+      const container = document.getElementById('toolbar-keys');
+      container.innerHTML = '';
+      ctrlBtnEl = null;
+
+      const grid = getFullGrid();
+      const customKeys = loadCustomKeys();
+      const customMap = new Map(customKeys.map(k => [k.id, k]));
+
+      for (const entry of grid) {
+        const builtin = BUILTIN_KEYS[entry.id];
+        const ck = customMap.get(entry.id);
+        if (!builtin && !ck) continue;
+
+        const btn = createKeyButton(entry.id, builtin, ck);
+        // CSS Grid placement (1-indexed)
+        btn.style.gridRow = entry.row + 1;
+        btn.style.gridColumn = entry.col + 1;
+        container.appendChild(btn);
+      }
+    }
 
     // Intercept keyboard input when Ctrl toggle is active.
     // xterm.js onData fires for normal key presses — we intercept and
@@ -1338,76 +1448,96 @@
       localStorage.setItem(CUSTOM_KEYS_KEY, JSON.stringify(keys));
     }
 
-    // Special key preset labels for display (keys are literal escape notation matching HTML option values)
-    const SPECIAL_KEY_LABELS = {
-      '\\x03': 'Ctrl+C', '\\x04': 'Ctrl+D', '\\x1a': 'Ctrl+Z', '\\x0c': 'Ctrl+L',
-      '\\x01': 'Ctrl+A', '\\x05': 'Ctrl+E', '\\x15': 'Ctrl+U', '\\x0b': 'Ctrl+K',
-      '\\x1bOP': 'F1', '\\x1bOQ': 'F2', '\\x1bOR': 'F3', '\\x1bOS': 'F4',
-      '\\x1b[15~': 'F5', '\\x1b[17~': 'F6', '\\x1b[18~': 'F7', '\\x1b[19~': 'F8',
-      '\\x1b[20~': 'F9', '\\x1b[21~': 'F10', '\\x1b[23~': 'F11', '\\x1b[24~': 'F12',
-    };
+    // --- Grid Editor state ---
+    let geSelectedId = null;
 
-    function renderCustomKeys() {
-      const row = document.getElementById('custom-keys-row');
-      const keys = loadCustomKeys();
-      row.innerHTML = '';
-      row.classList.toggle('has-keys', keys.length > 0);
+    function renderGridEditor() {
+      const editor = document.getElementById('grid-editor');
+      const hint = document.getElementById('grid-editor-hint');
+      const btnDeselect = document.getElementById('ge-deselect');
+      const btnDelete = document.getElementById('ge-delete');
+      editor.innerHTML = '';
 
-      for (const ck of keys) {
-        const btn = document.createElement('button');
-        btn.className = 'key-btn';
-        btn.textContent = ck.label;
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          if (!activeSessionId) return;
-          const session = termSessions.get(activeSessionId);
-          if (!session || session.ws.readyState !== 1) return;
+      const grid = getFullGrid();
+      const customKeys = loadCustomKeys();
+      const customMap = new Map(customKeys.map(k => [k.id, k]));
+      const maxCol = Math.max(getMaxCol(grid) + 1, 4); // at least 1 extra column
+      const occupied = new Map();
+      for (const e of grid) occupied.set(`${e.row},${e.col}`, e.id);
 
-          let data;
-          if (ck.type === 'special') {
-            data = parseEscSeq(ck.value);
+      for (let c = 0; c <= maxCol; c++) {
+        for (let r = 0; r < 2; r++) {
+          const cell = document.createElement('div');
+          cell.className = 'grid-cell';
+          cell.style.gridRow = r + 1;
+          cell.style.gridColumn = c + 1;
+
+          const key = `${r},${c}`;
+          const id = occupied.get(key);
+
+          if (id) {
+            const builtin = BUILTIN_KEYS[id];
+            const ck = customMap.get(id);
+            cell.classList.add('occupied');
+            cell.textContent = builtin ? builtin.label : (ck ? ck.label : '?');
+            if (id === geSelectedId) cell.classList.add('selected');
+
+            cell.addEventListener('click', () => {
+              if (geSelectedId === id) {
+                geSelectedId = null;
+              } else if (geSelectedId) {
+                // Swap: move selected to this cell, this key to selected's old position
+                const g = getFullGrid();
+                const fromEntry = g.find(e => e.id === geSelectedId);
+                const toEntry = g.find(e => e.id === id);
+                if (fromEntry && toEntry) {
+                  const tmpR = fromEntry.row, tmpC = fromEntry.col;
+                  fromEntry.row = toEntry.row;
+                  fromEntry.col = toEntry.col;
+                  toEntry.row = tmpR;
+                  toEntry.col = tmpC;
+                  saveToolbarLayout(g);
+                  renderToolbar();
+                }
+                geSelectedId = null;
+              } else {
+                geSelectedId = id;
+              }
+              renderGridEditor();
+            });
           } else {
-            // Text type: convert literal \n to actual newline
-            data = ck.value.replace(/\\n/g, '\n');
+            // Empty cell
+            if (geSelectedId) cell.classList.add('drop-target');
+            cell.addEventListener('click', () => {
+              if (!geSelectedId) return;
+              const g = getFullGrid();
+              const entry = g.find(e => e.id === geSelectedId);
+              if (entry) {
+                entry.row = r;
+                entry.col = c;
+                saveToolbarLayout(g);
+                renderToolbar();
+              }
+              geSelectedId = null;
+              renderGridEditor();
+            });
           }
-          session.ws.send(JSON.stringify({ type: 'input', data }));
-          session.term.focus({ preventScroll: true });
-        });
-        row.appendChild(btn);
+          editor.appendChild(cell);
+        }
       }
-    }
 
-    function renderCustomKeysList() {
-      const list = document.getElementById('ck-list');
-      const keys = loadCustomKeys();
-      if (keys.length === 0) {
-        list.innerHTML = '<div class="ck-empty">No custom keys registered.</div>';
-        return;
-      }
-      list.innerHTML = '';
-      for (const ck of keys) {
-        const item = document.createElement('div');
-        item.className = 'ck-item';
-        const detail = ck.type === 'special'
-          ? (SPECIAL_KEY_LABELS[ck.value] || ck.value)
-          : ck.value;
-        item.innerHTML = `
-          <div>
-            <span class="ck-item-label">${escapeHtml(ck.label)}</span>
-            <span class="ck-item-detail">${escapeHtml(detail)}</span>
-          </div>
-        `;
-        const delBtn = document.createElement('button');
-        delBtn.className = 'ck-item-del';
-        delBtn.textContent = '\u00D7';
-        delBtn.addEventListener('click', () => {
-          const updated = loadCustomKeys().filter(k => k.id !== ck.id);
-          saveCustomKeys(updated);
-          renderCustomKeysList();
-          renderCustomKeys();
-        });
-        item.appendChild(delBtn);
-        list.appendChild(item);
+      // Update action buttons
+      const selectedIsCustom = geSelectedId && !BUILTIN_KEYS[geSelectedId];
+      btnDeselect.disabled = !geSelectedId;
+      btnDelete.disabled = !selectedIsCustom;
+
+      if (geSelectedId) {
+        const builtin = BUILTIN_KEYS[geSelectedId];
+        const ck = customMap.get(geSelectedId);
+        const name = builtin ? builtin.label : (ck ? ck.label : '');
+        hint.textContent = `Selected: ${name}. Tap an empty cell to move, or tap another key to swap.`;
+      } else {
+        hint.textContent = 'Tap a key, then tap an empty cell to move it.';
       }
     }
 
@@ -1418,12 +1548,30 @@
       document.getElementById('ck-special-group').style.display = isSpecial ? '' : 'none';
     });
 
+    // Grid editor action buttons
+    document.getElementById('ge-deselect').addEventListener('click', () => {
+      geSelectedId = null;
+      renderGridEditor();
+    });
+
+    document.getElementById('ge-delete').addEventListener('click', () => {
+      if (!geSelectedId || BUILTIN_KEYS[geSelectedId]) return;
+      const updated = loadCustomKeys().filter(k => k.id !== geSelectedId);
+      saveCustomKeys(updated);
+      const g = loadToolbarLayout().filter(e => e.id !== geSelectedId);
+      saveToolbarLayout(g);
+      geSelectedId = null;
+      renderGridEditor();
+      renderToolbar();
+    });
+
     // Open/close custom keys dialog
     const customkeysOverlay = document.getElementById('customkeys-overlay');
 
     document.getElementById('btn-custom-keys').addEventListener('click', (e) => {
       e.preventDefault();
-      renderCustomKeysList();
+      geSelectedId = null;
+      renderGridEditor();
       // Reset form
       document.getElementById('ck-label').value = '';
       document.getElementById('ck-value').value = '';
@@ -1461,16 +1609,19 @@
         if (!value) return;
       }
 
+      const newId = generateId();
       const keys = loadCustomKeys();
-      keys.push({
-        id: generateId(),
-        label,
-        type,
-        value,
-      });
+      keys.push({ id: newId, label, type, value });
       saveCustomKeys(keys);
-      renderCustomKeysList();
-      renderCustomKeys();
+
+      // Add to grid at first empty cell
+      const grid = getFullGrid();
+      const pos = findEmptyCell(grid);
+      grid.push({ id: newId, row: pos.row, col: pos.col });
+      saveToolbarLayout(grid);
+
+      renderGridEditor();
+      renderToolbar();
 
       // Reset inputs
       document.getElementById('ck-label').value = '';
@@ -1478,7 +1629,7 @@
     });
 
     // Initial render
-    renderCustomKeys();
+    renderToolbar();
 
     // --- Keyboard shortcut ---
     document.addEventListener('keydown', (e) => {
