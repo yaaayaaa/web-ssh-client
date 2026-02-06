@@ -496,6 +496,39 @@
       color: #8b949e;
     }
     .save-check input { accent-color: #238636; }
+
+    /* --- Paste fallback --- */
+    #paste-anchor {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 8px 14px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+    #paste-anchor.show { display: flex; }
+    #paste-anchor-input {
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      border: none;
+      padding: 0;
+      position: absolute;
+      left: 10px;
+      top: 50%;
+    }
+    #paste-anchor-label {
+      font-size: 12px;
+      color: #8b949e;
+    }
+    #paste-anchor .btn { padding: 4px 10px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -630,6 +663,12 @@
         <button type="button" class="btn btn-secondary" id="ck-close">Close</button>
       </div>
     </div>
+  </div>
+
+  <div id="paste-anchor">
+    <input id="paste-anchor-input" type="text" autocomplete="off">
+    <span id="paste-anchor-label">Tap "Paste" above</span>
+    <button type="button" class="btn btn-secondary" id="paste-cancel">Cancel</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
@@ -1094,6 +1133,40 @@
       applyViewportHeight();
     }
 
+    // --- Paste fallback ---
+    // Shows a small anchor bar with a hidden input. Focusing the input
+    // triggers the iOS paste suggestion ("Paste" floating button).
+    // The paste event fires automatically → text is resolved → bar closes.
+    function showPasteDialog() {
+      return new Promise((resolve) => {
+        const anchor = document.getElementById('paste-anchor');
+        const input = document.getElementById('paste-anchor-input');
+        const btnCancel = document.getElementById('paste-cancel');
+        input.value = '';
+        anchor.classList.add('show');
+        // Small delay so iOS registers the input as interactive
+        setTimeout(() => input.focus(), 50);
+
+        function cleanup() {
+          anchor.classList.remove('show');
+          input.removeEventListener('paste', onPaste);
+          btnCancel.removeEventListener('click', onCancel);
+        }
+        function onPaste(e) {
+          const text = (e.clipboardData || window.clipboardData).getData('text');
+          e.preventDefault();
+          cleanup();
+          resolve(text || null);
+        }
+        function onCancel() {
+          cleanup();
+          resolve(null);
+        }
+        input.addEventListener('paste', onPaste);
+        btnCancel.addEventListener('click', onCancel);
+      });
+    }
+
     // --- Mobile toolbar ---
     // Only send via WebSocket — the server echoes back and xterm.js renders it.
     // Do NOT use term.input() here as it triggers onData → double send.
@@ -1119,6 +1192,7 @@
       'arrow-down':  { label: '↓',   handler: () => parseEscSeq('\\x1b[B') },
       'arrow-left':  { label: '←',   handler: () => parseEscSeq('\\x1b[D') },
       'arrow-right': { label: '→',   handler: () => parseEscSeq('\\x1b[C') },
+      'paste':       { label: '📋' },
     };
 
     // Grid layout: array of { id, row, col }
@@ -1127,6 +1201,7 @@
       { id: 'tab',         row: 0, col: 1 },
       { id: 'ctrl',        row: 0, col: 2 },
       { id: 'arrow-up',    row: 0, col: 3 },
+      { id: 'paste',       row: 0, col: 4 },
       { id: 'arrow-left',  row: 1, col: 2 },
       { id: 'arrow-down',  row: 1, col: 3 },
       { id: 'arrow-right', row: 1, col: 4 },
@@ -1201,6 +1276,24 @@
             const session = termSessions.get(activeSessionId);
             if (session) session.term.focus({ preventScroll: true });
           }
+        });
+      } else if (id === 'paste') {
+        // Paste button: call navigator.clipboard.readText() DIRECTLY in
+        // the click handler — no indirection. iOS Safari invalidates user
+        // activation if the call goes through an intermediate async function.
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        btn.addEventListener('click', async () => {
+          if (!activeSessionId) return;
+          const session = termSessions.get(activeSessionId);
+          if (!session || session.ws.readyState !== 1) return;
+          let text = null;
+          if (navigator.clipboard?.readText) {
+            try { text = await navigator.clipboard.readText(); } catch {}
+          }
+          if (!text) text = await showPasteDialog();
+          if (text) session.ws.send(JSON.stringify({ type: 'input', data: text }));
+          if (ctrlActive) setCtrl(false);
+          session.term.focus({ preventScroll: true });
         });
       } else {
         let repeatTimer = null;

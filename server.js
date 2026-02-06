@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -9,7 +10,24 @@ const { StringDecoder } = require('string_decoder');
 const fs = require('fs');
 
 const app = express();
-const server = http.createServer(app);
+
+// --- TLS: use HTTPS if cert files are available ---
+const CERTS_DIR = path.join(__dirname, 'certs');
+const TLS_CERT = process.env.TLS_CERT || path.join(CERTS_DIR, 'cert.pem');
+const TLS_KEY = process.env.TLS_KEY || path.join(CERTS_DIR, 'key.pem');
+
+let server;
+let usingTLS = false;
+if (fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY)) {
+  server = https.createServer({
+    cert: fs.readFileSync(TLS_CERT),
+    key: fs.readFileSync(TLS_KEY),
+  }, app);
+  usingTLS = true;
+} else {
+  server = http.createServer(app);
+}
+
 const wss = new WebSocketServer({ server });
 
 app.use(express.json());
@@ -321,7 +339,14 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || (usingTLS ? 443 : 3000);
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Web SSH client running on http://0.0.0.0:${PORT}`);
+  const proto = usingTLS ? 'https' : 'http';
+  console.log(`Web SSH client running on ${proto}://0.0.0.0:${PORT}`);
+  if (!usingTLS) {
+    console.log('  TLS disabled (no certs found in ./certs/)');
+    console.log('  To enable: tailscale cert <hostname>.ts.net');
+    console.log('             cp <hostname>.ts.net.crt certs/cert.pem');
+    console.log('             cp <hostname>.ts.net.key certs/key.pem');
+  }
 });
