@@ -2,12 +2,13 @@ services:
   web-ssh:
     build: .
     ports:
-      - "3000:3000"
+      - "3000:443"
     environment:
-      - PORT=3000
+      - PORT=443
     volumes:
       - ssh-data:/app/data
       - ./public:/app/public:ro
+      - ./certs:/app/certs:ro
     restart: unless-stopped
 
 volumes:
