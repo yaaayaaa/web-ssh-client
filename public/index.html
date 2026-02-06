@@ -10,7 +10,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { overflow: hidden; height: 100%; }
+    html {
+      overflow: hidden;
+      height: 100%;
+      overscroll-behavior: none;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #0d1117;
@@ -19,10 +23,12 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      overscroll-behavior: none;
       position: fixed;
       width: 100%;
       top: 0;
       left: 0;
+      touch-action: none;
     }
 
     /* --- Header --- */
@@ -46,6 +52,7 @@
       overflow-x: auto;
       flex: 1;
       scrollbar-width: none;
+      touch-action: pan-x;
     }
     .tab-bar::-webkit-scrollbar { display: none; }
     .tab {
@@ -114,12 +121,13 @@
     /* --- Connect Dialog --- */
     #connect-overlay {
       display: none;
-      position: fixed;
+      position: absolute;
       inset: 0;
       background: rgba(0,0,0,0.6);
       z-index: 100;
       align-items: center;
       justify-content: center;
+      touch-action: none;
     }
     #connect-overlay.show { display: flex; }
     #connect-dialog {
@@ -129,6 +137,10 @@
       padding: 24px;
       width: 90%;
       max-width: 400px;
+      max-height: 80%;
+      overflow-y: auto;
+      touch-action: pan-y;
+      overscroll-behavior: contain;
     }
     #connect-dialog h2 {
       font-size: 16px;
@@ -264,6 +276,7 @@
       flex: 1;
       overflow-x: auto;
       scrollbar-width: none;
+      touch-action: pan-x;
     }
     #toolbar-keys::-webkit-scrollbar { display: none; }
     .key-btn {
@@ -312,12 +325,13 @@
     /* --- Custom Keys Settings Dialog --- */
     #customkeys-overlay {
       display: none;
-      position: fixed;
+      position: absolute;
       inset: 0;
       background: rgba(0,0,0,0.6);
       z-index: 100;
       align-items: center;
       justify-content: center;
+      touch-action: none;
     }
     #customkeys-overlay.show { display: flex; }
     #customkeys-dialog {
@@ -327,8 +341,10 @@
       padding: 24px;
       width: 90%;
       max-width: 420px;
-      max-height: 80dvh;
+      max-height: 80%;
       overflow-y: auto;
+      touch-action: pan-y;
+      overscroll-behavior: contain;
     }
     #customkeys-dialog h2 {
       font-size: 16px;
@@ -429,6 +445,7 @@
       margin-bottom: 16px;
       max-height: 180px;
       overflow-y: auto;
+      touch-action: pan-y;
     }
     .saved-list-header {
       font-size: 12px;
@@ -499,7 +516,7 @@
 
     /* --- Paste fallback --- */
     #paste-anchor {
-      position: fixed;
+      position: absolute;
       bottom: 60px;
       left: 50%;
       transform: translateX(-50%);
@@ -1387,6 +1404,29 @@
     const TERM_RESPONSE_RE = /\x1b\[\??[>]?[\d;]*[cn]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
     function wrapOnData(term, ws) {
+      // --- IME composition guard ---
+      // Send composed text immediately at compositionend, then skip
+      // any onData that xterm.js fires for the same text afterward.
+      let isComposing = false;
+      let skipComposed = null;
+
+      const textarea = term.textarea;
+      if (textarea) {
+        textarea.addEventListener('compositionstart', () => {
+          isComposing = true;
+          skipComposed = null;
+        });
+        textarea.addEventListener('compositionend', (e) => {
+          isComposing = false;
+          const text = e.data;
+          if (text && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'input', data: text }));
+          }
+          // Mark to skip subsequent onData fires for this composed text
+          skipComposed = text || null;
+        });
+      }
+
       term.onData((data) => {
         if (ws.readyState !== 1) return;
         let toSend = data;
@@ -1404,6 +1444,14 @@
           }
           setCtrl(false);
         }
+
+        // Skip onData fired by xterm.js after compositionend
+        if (skipComposed !== null) {
+          if (toSend === skipComposed) { skipComposed = null; return; }
+          skipComposed = null; // different data — don't skip, send normally
+        }
+        if (isComposing) return; // suppress intermediate composition
+
         ws.send(JSON.stringify({ type: 'input', data: toSend }));
       });
     }
