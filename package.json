@@ -1,7 +1,13 @@
 {
   "name": "web-ssh-client",
   "version": "0.1.0",
-  "private": true,
+  "description": "A lightweight, browser-based SSH client built with Node.js and xterm.js",
+  "author": "yaaayaaa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yaaayaaa/web-ssh-client.git"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
