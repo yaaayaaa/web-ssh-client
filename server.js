@@ -30,6 +30,16 @@ if (fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY)) {
 
 const wss = new WebSocketServer({ server });
 
+// Periodic WebSocket-level ping to detect dead connections early.
+// The ws library handles protocol-level pong responses automatically.
+setInterval(() => {
+  wss.clients.forEach((client) => {
+    if (client.isAlive === false) return client.terminate();
+    client.isAlive = false;
+    client.ping();
+  });
+}, 25000);
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -314,8 +324,14 @@ wss.on('connection', (ws, req) => {
   session.wsClients.add(ws);
   session.lastActivity = Date.now();
 
-  // Send buffered output so client catches up
-  if (session.buffer.length > 0) {
+  // Track liveness for WebSocket-level ping/pong
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  // Send buffered output so client catches up (skip for resume connections
+  // where the terminal already has the content)
+  const resume = url.searchParams.get('resume') === '1';
+  if (!resume && session.buffer.length > 0) {
     ws.send(JSON.stringify({ type: 'output', data: session.buffer }));
   }
 
@@ -330,6 +346,8 @@ wss.on('connection', (ws, req) => {
         session.cols = cols;
         session.rows = rows;
         try { session.stream.setWindow(rows, cols, 0, 0); } catch {}
+      } else if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
       }
     } catch {}
   });

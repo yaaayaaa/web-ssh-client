@@ -258,10 +258,10 @@
     #mobile-toolbar {
       display: none;
       flex-shrink: 0;
-      padding: 4px 8px;
+      padding: 2px 6px;
       background: #161b22;
       border-top: 1px solid #30363d;
-      gap: 4px;
+      gap: 2px;
       flex-wrap: nowrap;
       align-items: center;
     }
@@ -270,9 +270,9 @@
     }
     #toolbar-keys {
       display: grid;
-      grid-template-rows: repeat(2, 36px);
-      grid-auto-columns: 48px;
-      gap: 4px;
+      grid-template-rows: repeat(2, 28px);
+      grid-auto-columns: 44px;
+      gap: 2px;
       flex: 1;
       overflow-x: auto;
       scrollbar-width: none;
@@ -280,14 +280,14 @@
     }
     #toolbar-keys::-webkit-scrollbar { display: none; }
     .key-btn {
-      min-width: 48px;
-      height: 36px;
-      padding: 6px 4px;
+      min-width: 44px;
+      height: 28px;
+      padding: 2px 4px;
       background: #21262d;
       border: 1px solid #30363d;
-      border-radius: 4px;
+      border-radius: 3px;
       color: #c9d1d9;
-      font-size: 12px;
+      font-size: 11px;
       font-family: 'JetBrains Mono', monospace;
       cursor: pointer;
       white-space: nowrap;
@@ -305,14 +305,14 @@
       color: #fff;
     }
     .settings-btn {
-      width: 36px;
-      height: 36px;
-      padding: 6px 0;
+      width: 28px;
+      height: 28px;
+      padding: 2px 0;
       background: #21262d;
       border: 1px solid #30363d;
-      border-radius: 4px;
+      border-radius: 3px;
       color: #8b949e;
-      font-size: 12px;
+      font-size: 11px;
       font-family: 'JetBrains Mono', monospace;
       cursor: pointer;
       flex-shrink: 0;
@@ -628,41 +628,9 @@
           <input type="text" id="ck-label" placeholder="e.g. ls, deploy, C-c" maxlength="20">
         </div>
         <div class="form-group">
-          <label>Type</label>
-          <select id="ck-type">
-            <option value="text">Text / Command</option>
-            <option value="special">Special Key</option>
-          </select>
-        </div>
-        <div class="form-group" id="ck-text-group">
-          <label>Send string</label>
-          <input type="text" id="ck-value" placeholder="e.g. ls -la\n">
-          <div class="ck-hint">Use \n for Enter (newline)</div>
-        </div>
-        <div class="form-group" id="ck-special-group" style="display:none">
-          <label>Special key</label>
-          <select id="ck-special">
-            <option value="\x03">Ctrl+C</option>
-            <option value="\x04">Ctrl+D</option>
-            <option value="\x1a">Ctrl+Z</option>
-            <option value="\x0c">Ctrl+L</option>
-            <option value="\x01">Ctrl+A</option>
-            <option value="\x05">Ctrl+E</option>
-            <option value="\x15">Ctrl+U</option>
-            <option value="\x0b">Ctrl+K</option>
-            <option value="\x1bOP">F1</option>
-            <option value="\x1bOQ">F2</option>
-            <option value="\x1bOR">F3</option>
-            <option value="\x1bOS">F4</option>
-            <option value="\x1b[15~">F5</option>
-            <option value="\x1b[17~">F6</option>
-            <option value="\x1b[18~">F7</option>
-            <option value="\x1b[19~">F8</option>
-            <option value="\x1b[20~">F9</option>
-            <option value="\x1b[21~">F10</option>
-            <option value="\x1b[23~">F11</option>
-            <option value="\x1b[24~">F12</option>
-          </select>
+          <label>Send value</label>
+          <input type="text" id="ck-value" placeholder="e.g. Ctrl+C, F5, ls -la\n">
+          <div class="ck-hint">Ctrl+A-Z, Alt+key, F1-F12, Home, End, Insert, Delete, PageUp, PageDown, or plain text (\n = Enter)</div>
         </div>
         <div class="form-actions" style="margin-top:8px">
           <button type="button" class="btn btn-primary" id="ck-add">Add</button>
@@ -987,14 +955,21 @@
             removeSession(sessionId);
           } else if (msg.type === 'error') {
             term.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`);
+          } else if (msg.type === 'pong') {
+            const s = termSessions.get(sessionId);
+            if (s) clearTimeout(s._pingTimer);
           }
         } catch {}
       };
 
       ws.onclose = () => {
-        // WebSocket disconnected but session may still be alive on server
-        term.write('\r\n\x1b[33m--- Disconnected from server, reconnecting... ---\x1b[0m\r\n');
-        setTimeout(() => reconnectWs(sessionId), 2000);
+        const s = termSessions.get(sessionId);
+        if (!s || s.ws !== ws) return;
+        if (document.visibilityState === 'visible') {
+          term.write('\r\n\x1b[33m--- Disconnected from server, reconnecting... ---\x1b[0m\r\n');
+          s._reconnectTimer = setTimeout(() => reconnectWs(sessionId), 1000);
+        }
+        // If page is hidden, visibilitychange handler will reconnect on resume
       };
 
       wrapOnData(term, ws);
@@ -1020,15 +995,28 @@
       renderTabs();
     }
 
-    function reconnectWs(sessionId) {
+    function reconnectWs(sessionId, silent) {
       const session = termSessions.get(sessionId);
       if (!session) return;
 
+      clearTimeout(session._reconnectTimer);
+      clearTimeout(session._pingTimer);
+
+      // Close existing WebSocket if still in progress
+      const old = session.ws;
+      if (old && old.readyState < WebSocket.CLOSING) {
+        old.onclose = null;
+        old.close();
+      }
+
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}`);
+      const resumeParam = silent ? '&resume=1' : '';
+      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${sessionId}${resumeParam}`);
 
       ws.onopen = () => {
-        session.term.write('\r\n\x1b[32m--- Reconnected ---\x1b[0m\r\n');
+        if (!silent) {
+          session.term.write('\r\n\x1b[32m--- Reconnected ---\x1b[0m\r\n');
+        }
         ws.send(JSON.stringify({ type: 'resize', cols: session.term.cols, rows: session.term.rows }));
       };
 
@@ -1041,12 +1029,18 @@
           } else if (msg.type === 'closed') {
             session.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
             removeSession(sessionId);
+          } else if (msg.type === 'pong') {
+            clearTimeout(session._pingTimer);
           }
         } catch {}
       };
 
       ws.onclose = () => {
-        setTimeout(() => reconnectWs(sessionId), 3000);
+        if (session.ws !== ws) return;
+        // Don't retry while page is hidden — saves battery on mobile.
+        // visibilitychange handler will reconnect when page resumes.
+        if (document.visibilityState === 'hidden') return;
+        session._reconnectTimer = setTimeout(() => reconnectWs(sessionId), 3000);
       };
 
       wrapOnData(session.term, ws);
@@ -1150,6 +1144,36 @@
       applyViewportHeight();
     }
 
+    // --- Reconnect WebSocket on page resume (iOS/mobile background return) ---
+    // iOS suspends WebSocket connections when the browser goes to background.
+    // On return, immediately check and reconnect without showing messages.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+
+      for (const [sessionId, session] of termSessions) {
+        clearTimeout(session._reconnectTimer);
+        clearTimeout(session._pingTimer);
+
+        const ws = session.ws;
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          // WebSocket already dead, reconnect immediately and silently
+          reconnectWs(sessionId, true);
+        } else if (ws.readyState === WebSocket.OPEN) {
+          // WebSocket looks alive, verify with application-level ping
+          session._pingTimer = setTimeout(() => {
+            reconnectWs(sessionId, true);
+          }, 3000);
+          try {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          } catch {
+            clearTimeout(session._pingTimer);
+            reconnectWs(sessionId, true);
+          }
+        }
+        // If CONNECTING, let it proceed naturally
+      }
+    });
+
     // --- Paste fallback ---
     // Shows a small anchor bar with a hidden input. Focusing the input
     // triggers the iOS paste suggestion ("Paste" floating button).
@@ -1189,6 +1213,47 @@
     // Do NOT use term.input() here as it triggers onData → double send.
     function parseEscSeq(str) {
       return str.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+
+    function resolveKeyValue(input) {
+      const s = input.trim();
+      const lower = s.toLowerCase();
+      // Ctrl+A-Z, Ctrl+[, Ctrl+\, Ctrl+]
+      const ctrlMatch = s.match(/^[Cc]trl\+(.+)$/);
+      if (ctrlMatch) {
+        const key = ctrlMatch[1];
+        if (key.length === 1) {
+          const upper = key.toUpperCase();
+          const code = upper.charCodeAt(0);
+          if (code >= 65 && code <= 90) return String.fromCharCode(code - 64);
+          if (key === '[') return '\x1b';
+          if (key === '\\') return '\x1c';
+          if (key === ']') return '\x1d';
+        }
+        return null;
+      }
+      // Alt+key
+      const altMatch = s.match(/^[Aa]lt\+(.+)$/);
+      if (altMatch) return '\x1b' + altMatch[1];
+      // F1-F12
+      const fMatch = lower.match(/^f(\d{1,2})$/);
+      if (fMatch) {
+        const fMap = {
+          1:'\x1bOP', 2:'\x1bOQ', 3:'\x1bOR', 4:'\x1bOS',
+          5:'\x1b[15~', 6:'\x1b[17~', 7:'\x1b[18~', 8:'\x1b[19~',
+          9:'\x1b[20~', 10:'\x1b[21~', 11:'\x1b[23~', 12:'\x1b[24~'
+        };
+        return fMap[parseInt(fMatch[1])] || null;
+      }
+      // Named keys
+      const namedKeys = {
+        'home':'\x1b[H', 'end':'\x1b[F',
+        'insert':'\x1b[2~', 'delete':'\x1b[3~',
+        'pageup':'\x1b[5~', 'pagedown':'\x1b[6~'
+      };
+      if (namedKeys[lower]) return namedKeys[lower];
+      // Plain text with \n → newline
+      return s.replace(/\\n/g, '\n');
     }
 
     // Ctrl toggle state
@@ -1322,9 +1387,10 @@
           if (builtin) {
             data = builtin.handler();
           } else if (ck.type === 'special') {
+            // Backward compat: old format stored escape sequences directly
             data = parseEscSeq(ck.value);
           } else {
-            data = ck.value.replace(/\\n/g, '\n');
+            data = resolveKeyValue(ck.value);
           }
           if (data) session.ws.send(JSON.stringify({ type: 'input', data }));
         };
@@ -1729,13 +1795,6 @@
       }
     }
 
-    // Type toggle
-    document.getElementById('ck-type').addEventListener('change', (e) => {
-      const isSpecial = e.target.value === 'special';
-      document.getElementById('ck-text-group').style.display = isSpecial ? 'none' : '';
-      document.getElementById('ck-special-group').style.display = isSpecial ? '' : 'none';
-    });
-
     // Grid editor action buttons
     document.getElementById('ge-deselect').addEventListener('click', () => {
       geSelectedId = null;
@@ -1763,9 +1822,6 @@
       // Reset form
       document.getElementById('ck-label').value = '';
       document.getElementById('ck-value').value = '';
-      document.getElementById('ck-type').value = 'text';
-      document.getElementById('ck-text-group').style.display = '';
-      document.getElementById('ck-special-group').style.display = 'none';
       customkeysOverlay.classList.add('show');
     });
 
@@ -1788,18 +1844,12 @@
       const label = document.getElementById('ck-label').value.trim();
       if (!label) return;
 
-      const type = document.getElementById('ck-type').value;
-      let value;
-      if (type === 'special') {
-        value = document.getElementById('ck-special').value;
-      } else {
-        value = document.getElementById('ck-value').value;
-        if (!value) return;
-      }
+      const value = document.getElementById('ck-value').value;
+      if (!value) return;
 
       const newId = generateId();
       const keys = loadCustomKeys();
-      keys.push({ id: newId, label, type, value });
+      keys.push({ id: newId, label, value });
       saveCustomKeys(keys);
 
       // Add to grid at first empty cell
