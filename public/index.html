@@ -260,6 +260,133 @@
       .touch-layer { pointer-events: auto; }
     }
 
+    /* --- Floating Window --- */
+    .floating-window {
+      position: absolute;
+      width: 320px;
+      height: 220px;
+      min-width: 180px;
+      min-height: 120px;
+      background: #1c1c1e;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 25;
+    }
+    .floating-window.visible { display: flex; }
+    .floating-window-titlebar {
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      height: 32px;
+      background: #2c2c2e;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+    .floating-window-titlebar:active { cursor: grabbing; }
+    .floating-window-title {
+      flex: 1;
+      font-size: 12px;
+      color: #98989d;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .floating-window-btn {
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #98989d;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s, color 0.1s;
+      flex-shrink: 0;
+    }
+    .floating-window-btn:hover { background: rgba(255,255,255,0.1); color: #e5e5e7; }
+    .floating-window-btn.close-btn:hover { background: #ff453a; color: #fff; }
+    .floating-window-body {
+      flex: 1;
+      padding: 12px;
+      overflow: auto;
+      font-size: 13px;
+      color: #636366;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .floating-window-resize {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+      touch-action: none;
+    }
+    .floating-window-resize::after {
+      content: '';
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid rgba(255,255,255,0.15);
+      border-bottom: 2px solid rgba(255,255,255,0.15);
+    }
+    .floating-minimized-dock {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .floating-minimized-dock:empty { display: none; }
+    .floating-dock-pill {
+      padding: 4px 12px;
+      background: #2c2c2e;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      color: #98989d;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      pointer-events: auto;
+      transition: background 0.15s;
+    }
+    .floating-dock-pill:hover { background: #3a3a3c; color: #e5e5e7; }
+    #btn-add-window {
+      padding: 5px 12px;
+      background: #5e9eff;
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.15s;
+      display: none;
+    }
+    #btn-add-window:hover { background: #4a8af0; transform: scale(1.02); }
+    #btn-add-window:active { transform: scale(0.98); }
+
     /* --- Empty State --- */
     #empty-state {
       display: flex;
@@ -301,8 +428,8 @@
     }
     #toolbar-keys {
       display: grid;
-      grid-template-rows: repeat(2, 32px);
-      grid-auto-columns: 44px;
+      grid-template-rows: repeat(2, var(--btn-size, 32px));
+      grid-auto-columns: var(--btn-w, 44px);
       gap: 2px;
       flex: 1;
       overflow-x: auto;
@@ -311,8 +438,8 @@
     }
     #toolbar-keys::-webkit-scrollbar { display: none; }
     .key-btn {
-      min-width: 44px;
-      height: 32px;
+      min-width: var(--btn-w, 44px);
+      height: var(--btn-size, 32px);
       padding: 2px 4px;
       background: #2c2c2e;
       border: 1px solid rgba(255,255,255,0.08);
@@ -337,8 +464,8 @@
       color: #fff;
     }
     .settings-btn {
-      width: 32px;
-      height: 32px;
+      width: var(--btn-size, 32px);
+      height: var(--btn-size, 32px);
       padding: 2px 0;
       background: #2c2c2e;
       border: 1px solid rgba(255,255,255,0.08);
@@ -602,10 +729,12 @@
       <div>No active sessions</div>
       <button onclick="showConnectDialog()">Connect to a server</button>
     </div>
+    <div class="floating-minimized-dock" id="floating-dock"></div>
   </div>
 
   <div id="header">
     <div class="tab-bar" id="tab-bar"></div>
+    <button id="btn-add-window" title="Add floating window">&#x25A3; Panel</button>
     <button id="btn-new">+</button>
   </div>
 
@@ -692,6 +821,13 @@
         <button id="btn-font-inc" title="Increase font size">A+</button>
       </div>
       <hr class="divider">
+      <div class="ck-section-label">Button Size</div>
+      <div class="font-size-controls">
+        <button id="btn-btn-dec" title="Decrease button size">-</button>
+        <span class="font-size-label" id="btn-size-label">32</span>
+        <button id="btn-btn-inc" title="Increase button size">+</button>
+      </div>
+      <hr class="divider">
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" id="ck-close">Close</button>
       </div>
@@ -708,8 +844,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
   <script>
     // --- State ---
-    const termSessions = new Map(); // sessionId -> { term, fitAddon, ws, el, config }
+    const termSessions = new Map(); // sessionId -> { term, fitAddon, ws, el, config, floatingWindows }
     let activeSessionId = null;
+
+    // --- Floating Window State ---
+    let floatingZCounter = 25;
+    let floatingIdCounter = 0;
 
     // --- Font size ---
     const FONT_SIZE_MIN = 8;
@@ -744,6 +884,34 @@
       }
     }
 
+    // --- Button size ---
+    const BTN_SIZE_MIN = 24;
+    const BTN_SIZE_MAX = 48;
+    const BTN_SIZE_KEY = 'ssh-btn-size';
+
+    function getStoredBtnSize() {
+      const v = parseInt(localStorage.getItem(BTN_SIZE_KEY), 10);
+      return (v >= BTN_SIZE_MIN && v <= BTN_SIZE_MAX) ? v : 32;
+    }
+
+    let currentBtnSize = getStoredBtnSize();
+
+    function updateBtnSizeLabel() {
+      document.getElementById('btn-size-label').textContent = currentBtnSize;
+    }
+
+    function applyBtnSize(size) {
+      currentBtnSize = Math.max(BTN_SIZE_MIN, Math.min(BTN_SIZE_MAX, size));
+      localStorage.setItem(BTN_SIZE_KEY, currentBtnSize);
+      updateBtnSizeLabel();
+      const toolbar = document.getElementById('mobile-toolbar');
+      toolbar.style.setProperty('--btn-size', currentBtnSize + 'px');
+      toolbar.style.setProperty('--btn-w', Math.round(currentBtnSize * 1.375) + 'px');
+    }
+
+    // Apply saved size on load
+    applyBtnSize(currentBtnSize);
+
     // --- Active tab persistence ---
     const ACTIVE_TAB_KEY = 'ssh-active-tab';
 
@@ -760,6 +928,281 @@
 
     function loadActiveTabIndex() {
       return parseInt(localStorage.getItem(ACTIVE_TAB_KEY), 10) || 0;
+    }
+
+    // --- Floating Windows ---
+    function createFloatingWindow(sessionId, title) {
+      const session = termSessions.get(sessionId);
+      if (!session) return null;
+
+      const windowId = 'fw-' + (++floatingIdCounter);
+      const windowCount = session.floatingWindows.size;
+      const offsetPx = windowCount * 24;
+
+      const el = document.createElement('div');
+      el.className = 'floating-window';
+      el.id = windowId;
+      el.style.top = (40 + offsetPx) + 'px';
+      el.style.left = (40 + offsetPx) + 'px';
+
+      const titleText = title || ('Window ' + (windowCount + 1));
+
+      el.innerHTML = `
+        <div class="floating-window-titlebar">
+          <span class="floating-window-title">${escapeHtml(titleText)}</span>
+          <button class="floating-window-btn minimize-btn" title="Minimize">&#x2013;</button>
+          <button class="floating-window-btn close-btn" title="Close">&times;</button>
+        </div>
+        <div class="floating-window-body">
+          <span>Placeholder</span>
+        </div>
+        <div class="floating-window-resize"></div>
+      `;
+
+      container.appendChild(el);
+
+      const winData = {
+        el,
+        minimized: false,
+        zIndex: ++floatingZCounter,
+        savedRect: null,
+        title: titleText,
+      };
+      el.style.zIndex = winData.zIndex;
+
+      if (floatingZCounter >= 89) normalizeZIndices(sessionId);
+
+      session.floatingWindows.set(windowId, winData);
+
+      // Show if this is the active session
+      if (sessionId === activeSessionId) el.classList.add('visible');
+
+      // Titlebar drag
+      const titlebar = el.querySelector('.floating-window-titlebar');
+      setupDrag(el, titlebar, sessionId, windowId);
+
+      // Resize handle
+      const resizeHandle = el.querySelector('.floating-window-resize');
+      setupResize(el, resizeHandle, sessionId, windowId);
+
+      // Minimize button
+      el.querySelector('.minimize-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        minimizeWindow(sessionId, windowId);
+      });
+
+      // Close button
+      el.querySelector('.close-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        destroyFloatingWindow(sessionId, windowId);
+      });
+
+      // Bring to front on pointerdown anywhere on the window
+      el.addEventListener('pointerdown', () => {
+        bringWindowToFront(sessionId, windowId);
+      });
+
+      return windowId;
+    }
+
+    function destroyFloatingWindow(sessionId, windowId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      const win = session.floatingWindows.get(windowId);
+      if (!win) return;
+      win.el.remove();
+      session.floatingWindows.delete(windowId);
+      renderMinimizedDock(sessionId);
+    }
+
+    function destroyAllFloatingWindows(sessionId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      for (const [, win] of session.floatingWindows) {
+        win.el.remove();
+      }
+      session.floatingWindows.clear();
+      renderMinimizedDock(sessionId);
+    }
+
+    function setupDrag(el, handle, sessionId, windowId) {
+      let startX, startY, startLeft, startTop;
+
+      function onPointerDown(e) {
+        // Only drag from titlebar, not from buttons
+        if (e.target.closest('.floating-window-btn')) return;
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = rect.left - containerRect.left;
+        startTop = rect.top - containerRect.top;
+
+        handle.addEventListener('pointermove', onPointerMove);
+        handle.addEventListener('pointerup', onPointerUp);
+        handle.addEventListener('pointercancel', onPointerUp);
+      }
+
+      function onPointerMove(e) {
+        e.preventDefault();
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        const containerRect = container.getBoundingClientRect();
+        const elW = el.offsetWidth;
+        const elH = el.offsetHeight;
+        const minVisible = 40;
+
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+
+        // Clamp: keep at least minVisible px of titlebar visible
+        newLeft = Math.max(-elW + minVisible, Math.min(containerRect.width - minVisible, newLeft));
+        newTop = Math.max(0, Math.min(containerRect.height - minVisible, newTop));
+
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+      }
+
+      function onPointerUp(e) {
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onPointerMove);
+        handle.removeEventListener('pointerup', onPointerUp);
+        handle.removeEventListener('pointercancel', onPointerUp);
+      }
+
+      handle.addEventListener('pointerdown', onPointerDown);
+    }
+
+    function setupResize(el, handle, sessionId, windowId) {
+      let startX, startY, startW, startH;
+
+      function onPointerDown(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handle.setPointerCapture(e.pointerId);
+
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = el.offsetWidth;
+        startH = el.offsetHeight;
+
+        handle.addEventListener('pointermove', onPointerMove);
+        handle.addEventListener('pointerup', onPointerUp);
+        handle.addEventListener('pointercancel', onPointerUp);
+      }
+
+      function onPointerMove(e) {
+        e.preventDefault();
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        const newW = Math.max(180, startW + dx);
+        const newH = Math.max(120, startH + dy);
+
+        el.style.width = newW + 'px';
+        el.style.height = newH + 'px';
+      }
+
+      function onPointerUp(e) {
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onPointerMove);
+        handle.removeEventListener('pointerup', onPointerUp);
+        handle.removeEventListener('pointercancel', onPointerUp);
+      }
+
+      handle.addEventListener('pointerdown', onPointerDown);
+    }
+
+    function minimizeWindow(sessionId, windowId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      const win = session.floatingWindows.get(windowId);
+      if (!win || win.minimized) return;
+
+      win.savedRect = {
+        left: win.el.style.left,
+        top: win.el.style.top,
+        width: win.el.style.width,
+        height: win.el.style.height,
+      };
+      win.minimized = true;
+      win.el.classList.remove('visible');
+      renderMinimizedDock(sessionId);
+    }
+
+    function restoreWindow(sessionId, windowId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      const win = session.floatingWindows.get(windowId);
+      if (!win || !win.minimized) return;
+
+      win.minimized = false;
+      if (win.savedRect) {
+        win.el.style.left = win.savedRect.left;
+        win.el.style.top = win.savedRect.top;
+        win.el.style.width = win.savedRect.width;
+        win.el.style.height = win.savedRect.height;
+      }
+      if (sessionId === activeSessionId) {
+        win.el.classList.add('visible');
+      }
+      bringWindowToFront(sessionId, windowId);
+      renderMinimizedDock(sessionId);
+    }
+
+    function bringWindowToFront(sessionId, windowId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+      const win = session.floatingWindows.get(windowId);
+      if (!win) return;
+
+      floatingZCounter++;
+      if (floatingZCounter >= 89) normalizeZIndices(sessionId);
+      win.zIndex = floatingZCounter;
+      win.el.style.zIndex = win.zIndex;
+    }
+
+    function normalizeZIndices(sessionId) {
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+
+      const sorted = [...session.floatingWindows.values()]
+        .filter(w => !w.minimized)
+        .sort((a, b) => a.zIndex - b.zIndex);
+
+      floatingZCounter = 25;
+      for (const win of sorted) {
+        win.zIndex = ++floatingZCounter;
+        win.el.style.zIndex = win.zIndex;
+      }
+    }
+
+    function renderMinimizedDock(sessionId) {
+      const dock = document.getElementById('floating-dock');
+      dock.innerHTML = '';
+
+      if (sessionId !== activeSessionId) return;
+
+      const session = termSessions.get(sessionId);
+      if (!session) return;
+
+      for (const [wid, win] of session.floatingWindows) {
+        if (!win.minimized) continue;
+        const pill = document.createElement('div');
+        pill.className = 'floating-dock-pill';
+        pill.textContent = win.title;
+        pill.addEventListener('click', () => restoreWindow(sessionId, wid));
+        dock.appendChild(pill);
+      }
+    }
+
+    function updateAddWindowButton() {
+      const btn = document.getElementById('btn-add-window');
+      btn.style.display = termSessions.size > 0 ? 'inline-flex' : 'none';
     }
 
     // --- DOM refs ---
@@ -896,6 +1339,9 @@
     }
 
     document.getElementById('btn-new').addEventListener('click', showConnectDialog);
+    document.getElementById('btn-add-window').addEventListener('click', () => {
+      if (activeSessionId) createFloatingWindow(activeSessionId);
+    });
 
     // Font size buttons
     updateFontSizeLabel();
@@ -904,6 +1350,15 @@
     });
     document.getElementById('btn-font-inc').addEventListener('click', () => {
       applyFontSizeToAll(currentFontSize + 1);
+    });
+
+    // Button size buttons
+    updateBtnSizeLabel();
+    document.getElementById('btn-btn-dec').addEventListener('click', () => {
+      applyBtnSize(currentBtnSize - 2);
+    });
+    document.getElementById('btn-btn-inc').addEventListener('click', () => {
+      applyBtnSize(currentBtnSize + 2);
     });
 
     connectForm.addEventListener('submit', async (e) => {
@@ -1036,7 +1491,7 @@
       });
       wrapperRo.observe(wrapper);
 
-      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo });
+      termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo, floatingWindows: new Map() });
 
       setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
       activateSession(sessionId);
@@ -1100,6 +1555,14 @@
       activeSessionId = sessionId;
       for (const [id, s] of termSessions) {
         s.el.classList.toggle('active', id === sessionId);
+        // Toggle floating windows visibility per session
+        for (const [, win] of s.floatingWindows) {
+          if (id === sessionId && !win.minimized) {
+            win.el.classList.add('visible');
+          } else {
+            win.el.classList.remove('visible');
+          }
+        }
       }
       emptyState.style.display = termSessions.size > 0 ? 'none' : 'flex';
       const session = termSessions.get(sessionId);
@@ -1110,11 +1573,14 @@
       }
       renderTabs();
       saveActiveTab();
+      renderMinimizedDock(sessionId);
+      updateAddWindowButton();
     }
 
     function removeSession(sessionId) {
       const session = termSessions.get(sessionId);
       if (!session) return;
+      destroyAllFloatingWindows(sessionId);
       try { session.ws.close(); } catch {}
       session.wrapperRo.disconnect();
       session.term.dispose();
@@ -1131,6 +1597,7 @@
         }
       }
       renderTabs();
+      updateAddWindowButton();
     }
 
     async function closeSession(sessionId) {
