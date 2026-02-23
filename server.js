@@ -165,6 +165,8 @@ app.get('/api/sessions', (req, res) => {
       host: s.config.host,
       port: s.config.port,
       username: s.config.username,
+      type: s.type || 'tab',
+      parentSessionId: s.parentSessionId || null,
       createdAt: s.createdAt,
       lastActivity: s.lastActivity,
     });
@@ -174,7 +176,7 @@ app.get('/api/sessions', (req, res) => {
 
 // Create new SSH session
 app.post('/api/sessions', (req, res) => {
-  const { host, port = 22, username, password, privateKey } = req.body;
+  const { host, port = 22, username, password, privateKey, type = 'tab', parentSessionId } = req.body;
 
   if (!host || !username) {
     return res.status(400).json({ error: 'host and username are required' });
@@ -226,6 +228,8 @@ app.post('/api/sessions', (req, res) => {
         cols: 80,
         rows: 24,
         config: { host, port, username },
+        type,
+        parentSessionId: parentSessionId || null,
         createdAt: Date.now(),
         lastActivity: Date.now(),
         wsClients: new Set(),
@@ -268,7 +272,7 @@ app.post('/api/sessions', (req, res) => {
       });
 
       sessions.set(sessionId, session);
-      res.json({ sessionId, host, port, username });
+      res.json({ sessionId, host, port, username, type, parentSessionId: parentSessionId || null });
     });
   });
 

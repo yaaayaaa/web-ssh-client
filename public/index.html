@@ -263,10 +263,10 @@
     /* --- Floating Window --- */
     .floating-window {
       position: absolute;
-      width: 320px;
-      height: 220px;
-      min-width: 180px;
-      min-height: 120px;
+      width: 480px;
+      height: 320px;
+      min-width: 240px;
+      min-height: 160px;
       background: #1c1c1e;
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 12px;
@@ -319,14 +319,16 @@
     .floating-window-btn.close-btn:hover { background: #ff453a; color: #fff; }
     .floating-window-body {
       flex: 1;
-      padding: 12px;
-      overflow: auto;
+      overflow: hidden;
       font-size: 13px;
       color: #636366;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position: relative;
     }
+    .floating-terminal-wrapper { width: 100%; height: 100%; padding: 2px; }
+    .floating-terminal-wrapper .xterm { height: 100%; font-variant-emoji: text; }
+    .floating-terminal-wrapper .xterm-viewport { scrollbar-width: none; }
+    .floating-terminal-wrapper .xterm-viewport::-webkit-scrollbar { display: none; }
+    .floating-terminal-wrapper .xterm-helper-textarea { caret-color: transparent; }
     .floating-window-resize {
       position: absolute;
       right: 0;
@@ -851,6 +853,9 @@
     let floatingZCounter = 25;
     let floatingIdCounter = 0;
 
+    // --- Connect dialog mode ---
+    let connectDialogMode = 'tab'; // 'tab' | 'floating'
+
     // --- Font size ---
     const FONT_SIZE_MIN = 8;
     const FONT_SIZE_MAX = 24;
@@ -880,6 +885,20 @@
             cols: session.term.cols,
             rows: session.term.rows,
           }));
+        }
+        // Apply to floating windows
+        for (const [, win] of session.floatingWindows) {
+          if (win.term) {
+            win.term.options.fontSize = currentFontSize;
+            if (win.fitAddon) win.fitAddon.fit();
+            if (win.ws && win.ws.readyState === 1) {
+              win.ws.send(JSON.stringify({
+                type: 'resize',
+                cols: win.term.cols,
+                rows: win.term.rows,
+              }));
+            }
+          }
         }
       }
     }
@@ -930,9 +949,48 @@
       return parseInt(localStorage.getItem(ACTIVE_TAB_KEY), 10) || 0;
     }
 
+    // --- Floating Window State Persistence ---
+    const FLOATING_STATE_KEY = 'ssh-floating-state';
+
+    function saveFloatingState() {
+      const state = {};
+      for (const [, session] of termSessions) {
+        for (const [, win] of session.floatingWindows) {
+          if (!win.sessionId) continue;
+          state[win.sessionId] = {
+            top: win.minimized ? win.savedRect?.top : win.el.style.top,
+            left: win.minimized ? win.savedRect?.left : win.el.style.left,
+            width: win.minimized ? win.savedRect?.width : win.el.style.width,
+            height: win.minimized ? win.savedRect?.height : win.el.style.height,
+            minimized: win.minimized,
+          };
+        }
+      }
+      localStorage.setItem(FLOATING_STATE_KEY, JSON.stringify(state));
+    }
+
+    function loadFloatingState() {
+      try { return JSON.parse(localStorage.getItem(FLOATING_STATE_KEY)) || {}; }
+      catch { return {}; }
+    }
+
+    function cleanupFloatingState() {
+      const state = loadFloatingState();
+      const activeIds = new Set();
+      for (const [, session] of termSessions) {
+        for (const [, win] of session.floatingWindows) {
+          if (win.sessionId) activeIds.add(win.sessionId);
+        }
+      }
+      for (const id of Object.keys(state)) {
+        if (!activeIds.has(id)) delete state[id];
+      }
+      localStorage.setItem(FLOATING_STATE_KEY, JSON.stringify(state));
+    }
+
     // --- Floating Windows ---
-    function createFloatingWindow(sessionId, title) {
-      const session = termSessions.get(sessionId);
+    function createFloatingWindow(parentSessionId, floatingSessionId, config, rect) {
+      const session = termSessions.get(parentSessionId);
       if (!session) return null;
 
       const windowId = 'fw-' + (++floatingIdCounter);
@@ -942,10 +1000,17 @@
       const el = document.createElement('div');
       el.className = 'floating-window';
       el.id = windowId;
-      el.style.top = (40 + offsetPx) + 'px';
-      el.style.left = (40 + offsetPx) + 'px';
+      if (rect) {
+        el.style.top = rect.top;
+        el.style.left = rect.left;
+        el.style.width = rect.width;
+        el.style.height = rect.height;
+      } else {
+        el.style.top = (40 + offsetPx) + 'px';
+        el.style.left = (40 + offsetPx) + 'px';
+      }
 
-      const titleText = title || ('Window ' + (windowCount + 1));
+      const titleText = (config.username || '') + '@' + (config.host || '');
 
       el.innerHTML = `
         <div class="floating-window-titlebar">
@@ -954,12 +1019,36 @@
           <button class="floating-window-btn close-btn" title="Close">&times;</button>
         </div>
         <div class="floating-window-body">
-          <span>Placeholder</span>
+          <div class="floating-terminal-wrapper"></div>
         </div>
         <div class="floating-window-resize"></div>
       `;
 
       container.appendChild(el);
+
+      // --- Terminal setup ---
+      const termWrapper = el.querySelector('.floating-terminal-wrapper');
+      const term = new Terminal({
+        cursorBlink: true,
+        fontSize: currentFontSize,
+        fontFamily: "'JetBrains Mono', monospace",
+        theme: {
+          background: '#0d1117',
+          foreground: '#c9d1d9',
+          cursor: '#58a6ff',
+          selectionBackground: '#264f78',
+        },
+        allowProposedApi: true,
+      });
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(termWrapper);
+
+      const mouseTracker = createMouseModeTracker();
+
+      // --- WebSocket ---
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${floatingSessionId}`);
 
       const winData = {
         el,
@@ -967,42 +1056,149 @@
         zIndex: ++floatingZCounter,
         savedRect: null,
         title: titleText,
+        sessionId: floatingSessionId,
+        term,
+        fitAddon,
+        ws,
+        mouseTracker,
+        bodyRo: null,
+        _reconnectTimer: null,
+        _pingTimer: null,
       };
       el.style.zIndex = winData.zIndex;
 
-      if (floatingZCounter >= 89) normalizeZIndices(sessionId);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            mouseTracker.feed(msg.data);
+            term.write(forceTextPresentation(msg.data));
+          } else if (msg.type === 'closed') {
+            term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
+          } else if (msg.type === 'pong') {
+            clearTimeout(winData._pingTimer);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        if (winData.ws !== ws) return;
+        if (document.visibilityState === 'visible') {
+          term.write('\r\n\x1b[33m--- Disconnected, reconnecting... ---\x1b[0m\r\n');
+          winData._reconnectTimer = setTimeout(() => reconnectFloatingWs(parentSessionId, windowId), 1000);
+        }
+      };
+
+      wrapOnData(term, ws);
+
+      term.onResize(({ cols, rows }) => {
+        if (winData.ws && winData.ws.readyState === 1) {
+          winData.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+      });
+
+      // Touch layer
+      setupTouchLayer(termWrapper, term, () => winData.ws, mouseTracker);
+
+      // ResizeObserver on body to auto-fit terminal
+      const body = el.querySelector('.floating-window-body');
+      const bodyRo = new ResizeObserver(() => {
+        if (el.classList.contains('visible')) fitAddon.fit();
+      });
+      bodyRo.observe(body);
+      winData.bodyRo = bodyRo;
+
+      if (floatingZCounter >= 89) normalizeZIndices(parentSessionId);
 
       session.floatingWindows.set(windowId, winData);
 
       // Show if this is the active session
-      if (sessionId === activeSessionId) el.classList.add('visible');
+      if (parentSessionId === activeSessionId) el.classList.add('visible');
+
+      // Initial fit after layout
+      requestAnimationFrame(() => fitAddon.fit());
 
       // Titlebar drag
       const titlebar = el.querySelector('.floating-window-titlebar');
-      setupDrag(el, titlebar, sessionId, windowId);
+      setupDrag(el, titlebar, parentSessionId, windowId);
 
       // Resize handle
       const resizeHandle = el.querySelector('.floating-window-resize');
-      setupResize(el, resizeHandle, sessionId, windowId);
+      setupResize(el, resizeHandle, parentSessionId, windowId);
 
       // Minimize button
       el.querySelector('.minimize-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        minimizeWindow(sessionId, windowId);
+        minimizeWindow(parentSessionId, windowId);
       });
 
       // Close button
       el.querySelector('.close-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        destroyFloatingWindow(sessionId, windowId);
+        destroyFloatingWindow(parentSessionId, windowId);
       });
 
-      // Bring to front on pointerdown anywhere on the window
+      // Bring to front and focus terminal on pointerdown
       el.addEventListener('pointerdown', () => {
-        bringWindowToFront(sessionId, windowId);
+        bringWindowToFront(parentSessionId, windowId);
+        winData.term.focus();
       });
 
       return windowId;
+    }
+
+    function reconnectFloatingWs(parentSessionId, windowId, silent) {
+      const session = termSessions.get(parentSessionId);
+      if (!session) return;
+      const winData = session.floatingWindows.get(windowId);
+      if (!winData) return;
+
+      clearTimeout(winData._reconnectTimer);
+      clearTimeout(winData._pingTimer);
+
+      const old = winData.ws;
+      if (old && old.readyState < WebSocket.CLOSING) {
+        old.onclose = null;
+        old.close();
+      }
+
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const resumeParam = silent ? '&resume=1' : '';
+      const ws = new WebSocket(`${proto}//${location.host}/?sessionId=${winData.sessionId}${resumeParam}`);
+
+      ws.onopen = () => {
+        if (!silent) {
+          winData.term.write('\r\n\x1b[32m--- Reconnected ---\x1b[0m\r\n');
+        }
+        ws.send(JSON.stringify({ type: 'resize', cols: winData.term.cols, rows: winData.term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            if (winData.mouseTracker) winData.mouseTracker.feed(msg.data);
+            winData.term.write(forceTextPresentation(msg.data));
+          } else if (msg.type === 'closed') {
+            winData.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
+          } else if (msg.type === 'pong') {
+            clearTimeout(winData._pingTimer);
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        if (winData.ws !== ws) return;
+        if (document.visibilityState === 'hidden') return;
+        winData._reconnectTimer = setTimeout(() => reconnectFloatingWs(parentSessionId, windowId), 3000);
+      };
+
+      wrapOnData(winData.term, ws);
+      winData.ws = ws;
     }
 
     function destroyFloatingWindow(sessionId, windowId) {
@@ -1010,6 +1206,20 @@
       if (!session) return;
       const win = session.floatingWindows.get(windowId);
       if (!win) return;
+      clearTimeout(win._reconnectTimer);
+      clearTimeout(win._pingTimer);
+      if (win.bodyRo) win.bodyRo.disconnect();
+      if (win.ws) { try { win.ws.onclose = null; win.ws.close(); } catch {} }
+      if (win.term) win.term.dispose();
+      if (win.sessionId) {
+        fetch(`/api/sessions/${win.sessionId}`, { method: 'DELETE' }).catch(() => {});
+        // Remove from localStorage
+        try {
+          const state = loadFloatingState();
+          delete state[win.sessionId];
+          localStorage.setItem(FLOATING_STATE_KEY, JSON.stringify(state));
+        } catch {}
+      }
       win.el.remove();
       session.floatingWindows.delete(windowId);
       renderMinimizedDock(sessionId);
@@ -1018,10 +1228,9 @@
     function destroyAllFloatingWindows(sessionId) {
       const session = termSessions.get(sessionId);
       if (!session) return;
-      for (const [, win] of session.floatingWindows) {
-        win.el.remove();
+      for (const [wid] of session.floatingWindows) {
+        destroyFloatingWindow(sessionId, wid);
       }
-      session.floatingWindows.clear();
       renderMinimizedDock(sessionId);
     }
 
@@ -1100,8 +1309,8 @@
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
 
-        const newW = Math.max(180, startW + dx);
-        const newH = Math.max(120, startH + dy);
+        const newW = Math.max(240, startW + dx);
+        const newH = Math.max(160, startH + dy);
 
         el.style.width = newW + 'px';
         el.style.height = newH + 'px';
@@ -1112,6 +1321,12 @@
         handle.removeEventListener('pointermove', onPointerMove);
         handle.removeEventListener('pointerup', onPointerUp);
         handle.removeEventListener('pointercancel', onPointerUp);
+        // Fit terminal after resize ends
+        const session = termSessions.get(sessionId);
+        if (session) {
+          const win = session.floatingWindows.get(windowId);
+          if (win && win.fitAddon) win.fitAddon.fit();
+        }
       }
 
       handle.addEventListener('pointerdown', onPointerDown);
@@ -1151,6 +1366,7 @@
         win.el.classList.add('visible');
       }
       bringWindowToFront(sessionId, windowId);
+      if (win.fitAddon) requestAnimationFrame(() => win.fitAddon.fit());
       renderMinimizedDock(sessionId);
     }
 
@@ -1218,12 +1434,36 @@
     async function init() {
       // Read before attachSession loop overwrites it
       const savedIndex = loadActiveTabIndex();
+      const floatingState = loadFloatingState();
 
       try {
         const res = await fetch('/api/sessions');
         const sessions = await res.json();
+        const floatingToRestore = [];
+
+        // 1st pass: restore tab sessions
         for (const s of sessions) {
+          if (s.type === 'floating') {
+            floatingToRestore.push(s);
+            continue;
+          }
           attachSession(s.id, s);
+        }
+
+        // 2nd pass: restore floating windows
+        for (const s of floatingToRestore) {
+          if (!s.parentSessionId || !termSessions.has(s.parentSessionId)) {
+            // Parent session doesn't exist → delete orphaned floating session
+            fetch(`/api/sessions/${s.id}`, { method: 'DELETE' }).catch(() => {});
+            continue;
+          }
+          const saved = floatingState[s.id] || null;
+          const rect = saved ? { top: saved.top, left: saved.left, width: saved.width, height: saved.height } : null;
+          const windowId = createFloatingWindow(s.parentSessionId, s.id, s, rect);
+          // Restore minimized state
+          if (saved && saved.minimized && windowId) {
+            minimizeWindow(s.parentSessionId, windowId);
+          }
         }
       } catch {}
 
@@ -1233,6 +1473,9 @@
         const targetId = sessionIds[Math.min(savedIndex, sessionIds.length - 1)];
         activateSession(targetId);
       }
+
+      // Clean up stale localStorage entries
+      cleanupFloatingState();
     }
 
     // --- Saved Connections ---
@@ -1297,7 +1540,11 @@
           username: conn.username,
           password: conn.password || undefined,
           privateKey: conn.privateKey || undefined,
+          type: connectDialogMode === 'floating' ? 'floating' : 'tab',
         };
+        if (connectDialogMode === 'floating' && activeSessionId) {
+          body.parentSessionId = activeSessionId;
+        }
         const res = await fetch('/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1306,7 +1553,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Connection failed');
         hideConnectDialog();
-        attachSession(data.sessionId, data);
+        if (connectDialogMode === 'floating' && activeSessionId) {
+          createFloatingWindow(activeSessionId, data.sessionId, { ...conn, ...data });
+        } else {
+          attachSession(data.sessionId, data);
+        }
       } catch (err) {
         connectError.textContent = err.message;
         connectError.style.display = 'block';
@@ -1325,7 +1576,10 @@
     }
 
     // --- Connect Dialog ---
-    function showConnectDialog() {
+    function showConnectDialog(mode) {
+      connectDialogMode = mode || 'tab';
+      document.querySelector('#connect-dialog h2').textContent =
+        connectDialogMode === 'floating' ? 'New Panel Connection' : 'New Connection';
       loadSavedConnections();
       connectOverlay.classList.add('show');
       document.getElementById('f-host').focus();
@@ -1340,7 +1594,7 @@
 
     document.getElementById('btn-new').addEventListener('click', showConnectDialog);
     document.getElementById('btn-add-window').addEventListener('click', () => {
-      if (activeSessionId) createFloatingWindow(activeSessionId);
+      if (activeSessionId) showConnectDialog('floating');
     });
 
     // Font size buttons
@@ -1373,7 +1627,11 @@
         username: document.getElementById('f-username').value.trim(),
         password: document.getElementById('f-password').value,
         privateKey: document.getElementById('f-key').value.trim() || undefined,
+        type: connectDialogMode === 'floating' ? 'floating' : 'tab',
       };
+      if (connectDialogMode === 'floating' && activeSessionId) {
+        body.parentSessionId = activeSessionId;
+      }
 
       try {
         const res = await fetch('/api/sessions', {
@@ -1396,7 +1654,11 @@
         }
 
         hideConnectDialog();
-        attachSession(data.sessionId, data);
+        if (connectDialogMode === 'floating' && activeSessionId) {
+          createFloatingWindow(activeSessionId, data.sessionId, data);
+        } else {
+          attachSession(data.sessionId, data);
+        }
       } catch (err) {
         connectError.textContent = err.message;
         connectError.style.display = 'block';
@@ -1663,6 +1925,7 @@
     }
 
     window.addEventListener('resize', fitActiveTerminal);
+    window.addEventListener('beforeunload', saveFloatingState);
 
     // Use visualViewport to adjust body height for mobile keyboard.
     // The height change propagates through flex layout to terminal-container,
@@ -1690,10 +1953,8 @@
 
         const ws = session.ws;
         if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-          // WebSocket already dead, reconnect immediately and silently
           reconnectWs(sessionId, true);
         } else if (ws.readyState === WebSocket.OPEN) {
-          // WebSocket looks alive, verify with application-level ping
           session._pingTimer = setTimeout(() => {
             reconnectWs(sessionId, true);
           }, 3000);
@@ -1704,7 +1965,27 @@
             reconnectWs(sessionId, true);
           }
         }
-        // If CONNECTING, let it proceed naturally
+
+        // Reconnect floating window WebSockets
+        for (const [wid, win] of session.floatingWindows) {
+          clearTimeout(win._reconnectTimer);
+          clearTimeout(win._pingTimer);
+
+          const fws = win.ws;
+          if (!fws || fws.readyState === WebSocket.CLOSED || fws.readyState === WebSocket.CLOSING) {
+            reconnectFloatingWs(sessionId, wid, true);
+          } else if (fws.readyState === WebSocket.OPEN) {
+            win._pingTimer = setTimeout(() => {
+              reconnectFloatingWs(sessionId, wid, true);
+            }, 3000);
+            try {
+              fws.send(JSON.stringify({ type: 'ping' }));
+            } catch {
+              clearTimeout(win._pingTimer);
+              reconnectFloatingWs(sessionId, wid, true);
+            }
+          }
+        }
       }
     });
 
