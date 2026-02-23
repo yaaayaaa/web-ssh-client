@@ -852,6 +852,7 @@
     // --- Floating Window State ---
     let floatingZCounter = 25;
     let floatingIdCounter = 0;
+    let focusedFloatingTarget = null; // { parentSessionId, windowId }
 
     // --- Connect dialog mode ---
     let connectDialogMode = 'tab'; // 'tab' | 'floating'
@@ -1146,6 +1147,7 @@
       el.addEventListener('pointerdown', () => {
         bringWindowToFront(parentSessionId, windowId);
         winData.term.focus();
+        focusedFloatingTarget = { parentSessionId, windowId };
       });
 
       return windowId;
@@ -1679,6 +1681,9 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'terminal-wrapper';
       wrapper.id = `term-${sessionId}`;
+      wrapper.addEventListener('pointerdown', () => {
+        focusedFloatingTarget = null;
+      });
       container.appendChild(wrapper);
 
       const term = new Terminal({
@@ -1815,6 +1820,7 @@
 
     function activateSession(sessionId) {
       activeSessionId = sessionId;
+      focusedFloatingTarget = null;
       for (const [id, s] of termSessions) {
         s.el.classList.toggle('active', id === sessionId);
         // Toggle floating windows visibility per session
@@ -2157,6 +2163,21 @@
       return { row: 0, col: maxCol + 1 };
     }
 
+    function getFocusedTarget() {
+      if (focusedFloatingTarget) {
+        const session = termSessions.get(focusedFloatingTarget.parentSessionId);
+        if (session) {
+          const win = session.floatingWindows.get(focusedFloatingTarget.windowId);
+          if (win && win.ws) return { term: win.term, ws: win.ws };
+        }
+        focusedFloatingTarget = null;
+      }
+      if (!activeSessionId) return null;
+      const session = termSessions.get(activeSessionId);
+      if (!session) return null;
+      return { term: session.term, ws: session.ws };
+    }
+
     function createKeyButton(id, builtin, ck) {
       const btn = document.createElement('button');
       btn.className = 'key-btn';
@@ -2169,10 +2190,8 @@
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           setCtrl(!ctrlActive);
-          if (activeSessionId) {
-            const session = termSessions.get(activeSessionId);
-            if (session) session.term.focus({ preventScroll: true });
-          }
+          const target = getFocusedTarget();
+          if (target) target.term.focus({ preventScroll: true });
         });
       } else if (id === 'paste') {
         // Paste button: call navigator.clipboard.readText() DIRECTLY in
@@ -2180,24 +2199,22 @@
         // activation if the call goes through an intermediate async function.
         btn.addEventListener('contextmenu', (e) => e.preventDefault());
         btn.addEventListener('click', async () => {
-          if (!activeSessionId) return;
-          const session = termSessions.get(activeSessionId);
-          if (!session || session.ws.readyState !== 1) return;
+          const target = getFocusedTarget();
+          if (!target || target.ws.readyState !== 1) return;
           let text = null;
           if (navigator.clipboard?.readText) {
             try { text = await navigator.clipboard.readText(); } catch {}
           }
           if (!text) text = await showPasteDialog();
-          if (text) session.ws.send(JSON.stringify({ type: 'input', data: text }));
+          if (text) target.ws.send(JSON.stringify({ type: 'input', data: text }));
           if (ctrlActive) setCtrl(false);
-          session.term.focus({ preventScroll: true });
+          target.term.focus({ preventScroll: true });
         });
       } else {
         let repeatTimer = null;
         const sendKey = () => {
-          if (!activeSessionId) return;
-          const session = termSessions.get(activeSessionId);
-          if (!session || session.ws.readyState !== 1) return;
+          const target = getFocusedTarget();
+          if (!target || target.ws.readyState !== 1) return;
           let data;
           if (builtin) {
             data = builtin.handler();
@@ -2207,7 +2224,7 @@
           } else {
             data = resolveKeyValue(ck.value);
           }
-          if (data) session.ws.send(JSON.stringify({ type: 'input', data }));
+          if (data) target.ws.send(JSON.stringify({ type: 'input', data }));
         };
         const stopRepeat = () => {
           if (repeatTimer != null) { clearInterval(repeatTimer); repeatTimer = null; }
@@ -2217,10 +2234,8 @@
         btn.addEventListener('contextmenu', (e) => e.preventDefault());
         btn.addEventListener('pointerdown', (e) => {
           e.preventDefault();
-          if (activeSessionId) {
-            const session = termSessions.get(activeSessionId);
-            if (session) session.term.focus({ preventScroll: true });
-          }
+          const target = getFocusedTarget();
+          if (target) target.term.focus({ preventScroll: true });
           sendKey();
           stopRepeat();
           let first = true;
@@ -2233,10 +2248,8 @@
         btn.addEventListener('pointerup', () => {
           stopRepeat();
           if (ctrlActive) setCtrl(false);
-          if (activeSessionId) {
-            const session = termSessions.get(activeSessionId);
-            if (session) session.term.focus({ preventScroll: true });
-          }
+          const target = getFocusedTarget();
+          if (target) target.term.focus({ preventScroll: true });
         });
         btn.addEventListener('pointerleave', stopRepeat);
         btn.addEventListener('pointercancel', stopRepeat);
