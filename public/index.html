@@ -333,20 +333,21 @@
       position: absolute;
       right: 0;
       bottom: 0;
-      width: 16px;
-      height: 16px;
+      width: 28px;
+      height: 28px;
       cursor: nwse-resize;
       touch-action: none;
+      z-index: 15;
     }
     .floating-window-resize::after {
       content: '';
       position: absolute;
-      right: 3px;
-      bottom: 3px;
-      width: 8px;
-      height: 8px;
-      border-right: 2px solid rgba(255,255,255,0.15);
-      border-bottom: 2px solid rgba(255,255,255,0.15);
+      right: 4px;
+      bottom: 4px;
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid rgba(255,255,255,0.18);
+      border-bottom: 2px solid rgba(255,255,255,0.18);
     }
     .floating-minimized-dock {
       position: absolute;
@@ -736,7 +737,7 @@
 
   <div id="header">
     <div class="tab-bar" id="tab-bar"></div>
-    <button id="btn-add-window" title="Add floating window">&#x25A3; Panel</button>
+    <button id="btn-add-window" title="Add floating window">&#x25A3;</button>
     <button id="btn-new">+</button>
   </div>
 
