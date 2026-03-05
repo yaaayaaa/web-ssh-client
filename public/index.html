@@ -16,7 +16,7 @@
       overscroll-behavior: none;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'JetBrains Mono', monospace;
       background: #111113;
       color: #e5e5e7;
       height: 100dvh;
@@ -953,6 +953,7 @@
 
     // --- Floating Window State Persistence ---
     const FLOATING_STATE_KEY = 'ssh-floating-state';
+    const FLOATING_SIZE_KEY = 'ssh-floating-size';
 
     function saveFloatingState() {
       const state = {};
@@ -1010,6 +1011,13 @@
       } else {
         el.style.top = (40 + offsetPx) + 'px';
         el.style.left = (40 + offsetPx) + 'px';
+        try {
+          const saved = JSON.parse(localStorage.getItem(FLOATING_SIZE_KEY));
+          if (saved) {
+            el.style.width = saved.width + 'px';
+            el.style.height = saved.height + 'px';
+          }
+        } catch {}
       }
 
       const titleText = (config.username || '') + '@' + (config.host || '');
@@ -1324,6 +1332,8 @@
         handle.removeEventListener('pointermove', onPointerMove);
         handle.removeEventListener('pointerup', onPointerUp);
         handle.removeEventListener('pointercancel', onPointerUp);
+        // Save size as default for new windows
+        localStorage.setItem(FLOATING_SIZE_KEY, JSON.stringify({ width: el.offsetWidth, height: el.offsetHeight }));
         // Fit terminal after resize ends
         const session = termSessions.get(sessionId);
         if (session) {
