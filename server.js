@@ -233,6 +233,7 @@ app.post('/api/sessions', (req, res) => {
         createdAt: Date.now(),
         lastActivity: Date.now(),
         wsClients: new Set(),
+        activeWs: null,
       };
 
       stream.on('data', (data) => {
@@ -328,6 +329,10 @@ wss.on('connection', (ws, req) => {
   session.wsClients.add(ws);
   session.lastActivity = Date.now();
 
+  // Per-client pending resize (applied when this client becomes active)
+  ws._pendingCols = null;
+  ws._pendingRows = null;
+
   // Track liveness for WebSocket-level ping/pong
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -345,11 +350,24 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'input' && session.stream) {
         session.stream.write(msg.data);
         session.lastActivity = Date.now();
+        if (session.activeWs !== ws) {
+          session.activeWs = ws;
+          if (ws._pendingCols != null && ws._pendingRows != null) {
+            session.cols = ws._pendingCols;
+            session.rows = ws._pendingRows;
+            try { session.stream.setWindow(ws._pendingRows, ws._pendingCols, 0, 0); } catch {}
+          }
+        }
       } else if (msg.type === 'resize' && session.stream) {
         const { cols, rows } = msg;
-        session.cols = cols;
-        session.rows = rows;
-        try { session.stream.setWindow(rows, cols, 0, 0); } catch {}
+        ws._pendingCols = cols;
+        ws._pendingRows = rows;
+        if (!session.activeWs || session.activeWs === ws) {
+          session.activeWs = ws;
+          session.cols = cols;
+          session.rows = rows;
+          try { session.stream.setWindow(rows, cols, 0, 0); } catch {}
+        }
       } else if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
       }
@@ -358,6 +376,9 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     session.wsClients.delete(ws);
+    if (session.activeWs === ws) {
+      session.activeWs = null;
+    }
   });
 });
 
