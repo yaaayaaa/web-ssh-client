@@ -1918,6 +1918,7 @@
     const TAB_MIN_WIDTH = 80; // px – threshold before switching to scroll mode
 
     function renderTabs() {
+      const savedScrollLeft = tabBar.scrollLeft;
       tabBar.innerHTML = '';
       tabBar.classList.remove('scrollable');
       let tabIdx = 0;
@@ -1941,6 +1942,7 @@
         tabBar.appendChild(tab);
       }
       updateTabLayout();
+      tabBar.scrollLeft = savedScrollLeft;
     }
 
     function updateTabLayout() {
