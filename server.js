@@ -133,7 +133,7 @@ app.delete('/api/connections/:id', (req, res) => {
 const sessions = new Map();
 
 const BUFFER_MAX = 512 * 1024; // 512KB scrollback buffer per session
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle timeout
+const SESSION_TIMEOUT_MS = parseInt(process.env.SESSION_TIMEOUT_MS, 10) || 24 * 60 * 60 * 1000; // default 24h idle timeout
 
 // Cleanup idle sessions periodically
 setInterval(() => {
