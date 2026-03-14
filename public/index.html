@@ -1139,8 +1139,9 @@
         }
       });
 
-      // Touch layer
+      // Touch layer & Shift+drag selection bypass
       setupTouchLayer(termWrapper, term, () => winData.ws, mouseTracker);
+      setupShiftSelect(term, mouseTracker);
 
       // ResizeObserver on body to auto-fit terminal
       const body = el.querySelector('.floating-window-body');
@@ -1800,6 +1801,7 @@
       termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo, floatingWindows: new Map() });
 
       setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
+      setupShiftSelect(term, mouseTracker);
       activateSession(sessionId);
       renderTabs();
     }
@@ -2409,6 +2411,70 @@
       });
     }
 
+
+    // --- Shift+drag selection bypass for mouse-tracking apps (tmux etc.) ---
+    // When mouse tracking is active, xterm.js forwards mouse events to the
+    // remote application instead of allowing text selection.  This helper
+    // intercepts mouse events during Shift+drag (capture phase) so that
+    // xterm.js never sees them, and drives its selection API manually.
+    // Selected text is auto-copied to the clipboard on mouseup.
+    function setupShiftSelect(term, mouseTracker) {
+      const el = term.element;
+      if (!el) return;
+
+      let selecting = false;
+      let startCol = 0, startRow = 0;
+
+      function posFromEvent(e) {
+        const screen = el.querySelector('.xterm-screen');
+        if (!screen) return null;
+        const rect = screen.getBoundingClientRect();
+        const cellW = rect.width / term.cols;
+        const cellH = rect.height / term.rows;
+        const col = Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellW), term.cols - 1));
+        const row = Math.max(0, Math.min(Math.floor((e.clientY - rect.top) / cellH), term.rows - 1));
+        return { col, row };
+      }
+
+      function updateSelection(e) {
+        const pos = posFromEvent(e);
+        if (!pos) return;
+        let sCol = startCol, sRow = startRow, eCol = pos.col, eRow = pos.row;
+        if (sRow > eRow || (sRow === eRow && sCol > eCol)) {
+          [sCol, sRow, eCol, eRow] = [eCol, eRow, sCol, sRow];
+        }
+        const len = (eRow - sRow) * term.cols + (eCol - sCol) + 1;
+        term.select(sCol, sRow + term.buffer.active.viewportY, len);
+      }
+
+      // Capture phase — runs before xterm.js's own listeners
+      el.addEventListener('mousedown', (e) => {
+        if (!e.shiftKey || !mouseTracker.active) return;
+        const pos = posFromEvent(e);
+        if (!pos) return;
+        e.stopPropagation();
+        e.preventDefault();
+        selecting = true;
+        startCol = pos.col;
+        startRow = pos.row;
+        term.clearSelection();
+      }, true);
+
+      document.addEventListener('mousemove', (e) => {
+        if (!selecting) return;
+        e.preventDefault();
+        updateSelection(e);
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!selecting) return;
+        selecting = false;
+        const text = term.getSelection();
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {});
+        }
+      });
+    }
 
     // --- Mouse mode tracker ---
     // Watches terminal output for DEC private mode set/reset sequences
