@@ -11,7 +11,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html {
-      overflow: hidden;
+      overflow: clip;
       height: 100%;
       overscroll-behavior: none;
     }
@@ -22,7 +22,7 @@
       height: 100dvh;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: clip;
       overscroll-behavior: none;
       position: fixed;
       width: 100%;
@@ -255,7 +255,7 @@
     #terminal-container {
       flex: 1;
       position: relative;
-      overflow: hidden;
+      overflow: clip;
     }
     .terminal-wrapper {
       position: absolute;
@@ -1994,6 +1994,13 @@
     window.addEventListener('resize', () => { updateTabLayout(); fitActiveTerminal(); });
     window.addEventListener('beforeunload', saveFloatingState);
 
+    // Prevent browser from scrolling the page to reveal focused elements
+    // (e.g. xterm's hidden textarea). overflow:clip on html/body handles most
+    // cases, but some browsers still fire scroll — reset it immediately.
+    window.addEventListener('scroll', () => {
+      if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+    });
+
     // Use visualViewport to adjust body height for mobile keyboard.
     // The height change propagates through flex layout to terminal-container,
     // which triggers the ResizeObserver above — no manual fit calls needed.
@@ -2002,9 +2009,6 @@
         document.body.style.height = `${window.visualViewport.height}px`;
       };
       window.visualViewport.addEventListener('resize', applyViewportHeight);
-      window.visualViewport.addEventListener('scroll', () => {
-        window.scrollTo(0, 0);
-      });
       applyViewportHeight();
     }
 
