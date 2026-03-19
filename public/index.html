@@ -1184,7 +1184,7 @@
       // Bring to front and focus terminal on pointerdown
       el.addEventListener('pointerdown', () => {
         bringWindowToFront(parentSessionId, windowId);
-        winData.term.focus();
+        winData.term.focus({ preventScroll: true });
         focusedFloatingTarget = { parentSessionId, windowId };
       });
 
@@ -1878,7 +1878,7 @@
       if (session) {
         // ResizeObserver on the wrapper will call fit() when it gains dimensions.
         // Focus the terminal after layout settles.
-        requestAnimationFrame(() => session.term.focus());
+        requestAnimationFrame(() => session.term.focus({ preventScroll: true }));
       }
       renderTabs();
       saveActiveTab();
@@ -2695,7 +2695,7 @@
       layer.addEventListener('touchend', (e) => {
         if (!moved) {
           e.preventDefault();
-          term.focus();
+          term.focus({ preventScroll: true });
         } else if (Math.abs(velocity) > STOP_THRESHOLD) {
           runInertia();
         }
