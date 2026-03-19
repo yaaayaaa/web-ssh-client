@@ -2424,6 +2424,13 @@
 
       let selecting = false;
       let startCol = 0, startRow = 0;
+      // Word selection mode (activated by double-click)
+      let wordMode = false;
+      let anchorWordStart = null; // { col, row } of the anchor word's start
+      let anchorWordEnd = null;   // { col, row } of the anchor word's end
+      let lastClickTime = 0;
+      let lastClickCol = -1, lastClickRow = -1;
+      const DBLCLICK_INTERVAL = 400; // ms
 
       function posFromEvent(e) {
         const screen = el.querySelector('.xterm-screen');
@@ -2436,15 +2443,64 @@
         return { col, row };
       }
 
+      // Returns true if the character at (col, row) is a word character
+      function isWordChar(col, row) {
+        const absRow = row + term.buffer.active.viewportY;
+        const line = term.buffer.active.getLine(absRow);
+        if (!line) return false;
+        const cell = line.getCell(col);
+        if (!cell) return false;
+        const ch = cell.getChars();
+        if (!ch || ch === ' ' || ch === '\t') return false;
+        return /[\w\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch);
+      }
+
+      // Find word boundaries at (col, row) in viewport coordinates
+      function wordBoundsAt(col, row) {
+        let wStart = col, wEnd = col;
+        // Expand left
+        while (wStart > 0 && isWordChar(wStart - 1, row)) wStart--;
+        // Expand right
+        while (wEnd < term.cols - 1 && isWordChar(wEnd + 1, row)) wEnd++;
+        // If clicked on a non-word char, treat as single character
+        if (!isWordChar(col, row)) {
+          return { startCol: col, startRow: row, endCol: col, endRow: row };
+        }
+        return { startCol: wStart, startRow: row, endCol: wEnd, endRow: row };
+      }
+
       function updateSelection(e) {
         const pos = posFromEvent(e);
         if (!pos) return;
-        let sCol = startCol, sRow = startRow, eCol = pos.col, eRow = pos.row;
-        if (sRow > eRow || (sRow === eRow && sCol > eCol)) {
-          [sCol, sRow, eCol, eRow] = [eCol, eRow, sCol, sRow];
+
+        if (wordMode) {
+          // Word-by-word selection: snap current position to word boundaries
+          const curWord = wordBoundsAt(pos.col, pos.row);
+          // Determine if cursor is before or after the anchor word
+          const cursorBefore = pos.row < anchorWordStart.row ||
+            (pos.row === anchorWordStart.row && pos.col < anchorWordStart.col);
+          let sCol, sRow, eCol, eRow;
+          if (cursorBefore) {
+            sCol = curWord.startCol;
+            sRow = curWord.startRow;
+            eCol = anchorWordEnd.col;
+            eRow = anchorWordEnd.row;
+          } else {
+            sCol = anchorWordStart.col;
+            sRow = anchorWordStart.row;
+            eCol = curWord.endCol;
+            eRow = curWord.endRow;
+          }
+          const len = (eRow - sRow) * term.cols + (eCol - sCol) + 1;
+          term.select(sCol, sRow + term.buffer.active.viewportY, len);
+        } else {
+          let sCol = startCol, sRow = startRow, eCol = pos.col, eRow = pos.row;
+          if (sRow > eRow || (sRow === eRow && sCol > eCol)) {
+            [sCol, sRow, eCol, eRow] = [eCol, eRow, sCol, sRow];
+          }
+          const len = (eRow - sRow) * term.cols + (eCol - sCol) + 1;
+          term.select(sCol, sRow + term.buffer.active.viewportY, len);
         }
-        const len = (eRow - sRow) * term.cols + (eCol - sCol) + 1;
-        term.select(sCol, sRow + term.buffer.active.viewportY, len);
       }
 
       // Capture phase — runs before xterm.js's own listeners
@@ -2454,10 +2510,33 @@
         if (!pos) return;
         e.stopPropagation();
         e.preventDefault();
+
+        const now = Date.now();
+        const isDblClick = (now - lastClickTime < DBLCLICK_INTERVAL) &&
+          pos.col === lastClickCol && pos.row === lastClickRow;
+        lastClickTime = now;
+        lastClickCol = pos.col;
+        lastClickRow = pos.row;
+
         selecting = true;
-        startCol = pos.col;
-        startRow = pos.row;
-        term.clearSelection();
+
+        if (isDblClick) {
+          // Enter word selection mode
+          wordMode = true;
+          const wb = wordBoundsAt(pos.col, pos.row);
+          anchorWordStart = { col: wb.startCol, row: wb.startRow };
+          anchorWordEnd = { col: wb.endCol, row: wb.endRow };
+          startCol = wb.startCol;
+          startRow = wb.startRow;
+          // Select the initial word
+          const len = (wb.endRow - wb.startRow) * term.cols + (wb.endCol - wb.startCol) + 1;
+          term.select(wb.startCol, wb.startRow + term.buffer.active.viewportY, len);
+        } else {
+          wordMode = false;
+          startCol = pos.col;
+          startRow = pos.row;
+          term.clearSelection();
+        }
       }, true);
 
       document.addEventListener('mousemove', (e) => {
