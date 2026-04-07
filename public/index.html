@@ -54,6 +54,22 @@
       #sidebar { display: none; }
       #sidebar-open-btn { display: none !important; }
     }
+    @media (hover: none) and (pointer: coarse) {
+      body {
+        flex-direction: column !important;
+      }
+      #header {
+        display: flex !important;
+        order: 0;
+        padding: 6px 10px;
+        border-bottom: none;
+        border-top: 1px solid rgba(255,255,255,0.08);
+      }
+      #header.hidden { display: none !important; }
+      #sidebar { display: none !important; }
+      #sidebar-open-btn { display: none !important; }
+      #mobile-toolbar { display: flex !important; }
+    }
     @media (min-width: 769px) {
       body {
         flex-direction: row;
@@ -1601,10 +1617,11 @@
     }
 
     function updateAddWindowButton() {
+      const showDesktopActions = isDesktopLayout() && termSessions.size > 0;
       const btn = document.getElementById('btn-add-window');
-      btn.style.display = termSessions.size > 0 ? 'inline-flex' : 'none';
+      btn.style.display = showDesktopActions ? 'inline-flex' : 'none';
       const sidebarAddBtn = document.getElementById('sidebar-btn-add-window');
-      if (sidebarAddBtn) sidebarAddBtn.style.display = termSessions.size > 0 ? 'block' : 'none';
+      if (sidebarAddBtn) sidebarAddBtn.style.display = showDesktopActions ? 'block' : 'none';
     }
 
     // --- DOM refs ---
@@ -2140,8 +2157,13 @@
     // --- Tabs ---
     const TAB_MIN_WIDTH = 80; // px – threshold before switching to scroll mode
 
+    function isDesktopLayout() {
+      const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      return window.innerWidth > 768 && !coarsePointer;
+    }
+
     function renderTabs() {
-      const isDesktop = window.innerWidth > 768;
+      const isDesktop = isDesktopLayout();
       const target = isDesktop ? sidebarTabs : tabBar;
       const savedScrollLeft = tabBar.scrollLeft;
       // Clear both containers
@@ -2218,9 +2240,9 @@
       ro.observe(document.getElementById('terminal-container'));
     }
 
-    let wasDesktop = window.innerWidth > 768;
+    let wasDesktop = isDesktopLayout();
     window.addEventListener('resize', () => {
-      const isDesktop = window.innerWidth > 768;
+      const isDesktop = isDesktopLayout();
       if (isDesktop !== wasDesktop) {
         wasDesktop = isDesktop;
         renderTabs();
@@ -3153,7 +3175,7 @@
       const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.altKey;
       if (mod && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
-        const isDesktop = window.innerWidth > 768;
+        const isDesktop = isDesktopLayout();
         const tabs = document.querySelectorAll(isDesktop ? '#sidebar-tabs .tab' : '#tab-bar .tab');
         const idx = parseInt(e.key) - 1;
         if (idx < tabs.length) {
