@@ -1589,6 +1589,8 @@
     function updateAddWindowButton() {
       const btn = document.getElementById('btn-add-window');
       btn.style.display = termSessions.size > 0 ? 'inline-flex' : 'none';
+      const sidebarAddBtn = document.getElementById('sidebar-btn-add-window');
+      if (sidebarAddBtn) sidebarAddBtn.style.display = termSessions.size > 0 ? 'block' : 'none';
     }
 
     // --- DOM refs ---
@@ -1601,6 +1603,45 @@
     const connectForm = document.getElementById('connect-form');
     const connectError = document.getElementById('connect-error');
     const btnConnect = document.getElementById('btn-connect');
+
+    // --- Sidebar ---
+    const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const SIDEBAR_VISIBLE_KEY = 'ssh-sidebar-visible';
+
+    document.getElementById('sidebar-btn-new').addEventListener('click', () => showConnectDialog());
+    document.getElementById('sidebar-btn-add-window').addEventListener('click', () => {
+      if (activeSessionId) createFloatingWindow(activeSessionId);
+    });
+
+    function toggleSidebar() {
+      const isHidden = sidebar.classList.toggle('hidden');
+      localStorage.setItem(SIDEBAR_VISIBLE_KEY, !isHidden);
+      sidebarToggle.innerHTML = isHidden ? '&#187;' : '&#171;';
+      // Refit terminals after layout change
+      requestAnimationFrame(() => {
+        for (const [, s] of termSessions) {
+          s.fitAddon.fit();
+        }
+        // Also refit floating windows
+        for (const [, s] of termSessions) {
+          if (s.floatingWindows) {
+            for (const [, fw] of s.floatingWindows) {
+              if (fw.fitAddon) fw.fitAddon.fit();
+            }
+          }
+        }
+      });
+    }
+
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarOpenBtn.addEventListener('click', toggleSidebar);
+
+    // Restore sidebar state
+    if (localStorage.getItem(SIDEBAR_VISIBLE_KEY) === 'false') {
+      sidebar.classList.add('hidden');
+      sidebarToggle.innerHTML = '&#187;';
+    }
 
     // --- Init: load existing sessions or restore from localStorage ---
     async function init() {
