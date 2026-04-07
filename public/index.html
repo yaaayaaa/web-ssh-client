@@ -1196,7 +1196,6 @@
         cursorBlink: true,
         fontSize: currentFontSize,
         fontFamily: "'JetBrains Mono', monospace",
-        macOptionIsMeta: true,
         theme: {
           background: '#0d1117',
           foreground: '#c9d1d9',
@@ -1259,7 +1258,6 @@
       };
 
       wrapOnData(term, ws);
-      setupKeyOverrides(term, () => winData.ws);
 
       term.onResize(({ cols, rows }) => {
         if (winData.ws && winData.ws.readyState === 1) {
@@ -1622,9 +1620,6 @@
       requestAnimationFrame(() => {
         for (const [, s] of termSessions) {
           s.fitAddon.fit();
-        }
-        // Also refit floating windows
-        for (const [, s] of termSessions) {
           if (s.floatingWindows) {
             for (const [, fw] of s.floatingWindows) {
               if (fw.fitAddon) fw.fitAddon.fit();
@@ -1901,7 +1896,6 @@
         cursorBlink: true,
         fontSize: currentFontSize,
         fontFamily: "'JetBrains Mono', monospace",
-        macOptionIsMeta: true,
         theme: {
           background: '#0d1117',
           foreground: '#c9d1d9',
@@ -1972,7 +1966,6 @@
 
       termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo, floatingWindows: new Map() });
 
-      setupKeyOverrides(term, () => termSessions.get(sessionId)?.ws);
       setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
       setupShiftSelect(term, mouseTracker);
       activateSession(sessionId);
@@ -2550,37 +2543,6 @@
     // Matches: DA1/DA2 (\x1b[?...c, \x1b[>...c), DSR (\x1b[...n),
     //          OSC color responses (\x1b]10;...\x1b\\ or \x1b]11;...\x07 etc.)
     const TERM_RESPONSE_RE = /\x1b\[\??[>]?[\d;]*[cn]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)/g;
-
-    // --- Custom key overrides ---
-    // 1. macOptionIsMeta handles Option+key natively.
-    // 2. Cmd has no terminal equivalent → map standard editing shortcuts.
-    // 3. Suppress xterm legacy Ctrl+digit → control-char mappings.
-    const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-    const CMD_BINDINGS = {
-      'Backspace':  '\x15',       // Cmd+Backspace → Ctrl+U (kill to BOL)
-      'Delete':     '\x0b',       // Cmd+Delete    → Ctrl+K (kill to EOL)
-      'ArrowLeft':  '\x01',       // Cmd+Left      → Ctrl+A (BOL)
-      'ArrowRight': '\x05',       // Cmd+Right     → Ctrl+E (EOL)
-    };
-    function setupKeyOverrides(term, getWs) {
-      term.attachCustomKeyEventHandler((e) => {
-        if (e.type !== 'keydown') return true;
-        // Suppress Ctrl+3 → ESC (xterm legacy mapping)
-        if (e.ctrlKey && e.key === '3') return false;
-        // Cmd+key editing shortcuts (Mac only)
-        if (IS_MAC && e.metaKey) {
-          const seq = CMD_BINDINGS[e.key];
-          if (!seq) return true;
-          const ws = getWs();
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'input', data: seq }));
-          }
-          e.preventDefault();
-          return false;
-        }
-        return true;
-      });
-    }
 
     function wrapOnData(term, ws) {
       // --- IME composition guard ---
