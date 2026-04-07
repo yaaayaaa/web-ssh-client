@@ -755,7 +755,18 @@
   </style>
 </head>
 <body>
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <button id="sidebar-toggle" title="Hide sidebar">&#171;</button>
+    </div>
+    <div id="sidebar-tabs"></div>
+    <div id="sidebar-actions">
+      <button id="sidebar-btn-add-window" title="Add floating window">&#x25A3; Window</button>
+      <button id="sidebar-btn-new" title="New connection">+ Connect</button>
+    </div>
+  </div>
   <div id="terminal-container">
+    <button id="sidebar-open-btn" title="Show sidebar">&#9776;</button>
     <div id="empty-state">
       <div>No active sessions</div>
       <button onclick="showConnectDialog()">Connect to a server</button>
@@ -1070,6 +1081,7 @@
         cursorBlink: true,
         fontSize: currentFontSize,
         fontFamily: "'JetBrains Mono', monospace",
+        macOptionIsMeta: true,
         theme: {
           background: '#0d1117',
           foreground: '#c9d1d9',
@@ -1132,6 +1144,7 @@
       };
 
       wrapOnData(term, ws);
+      setupKeyOverrides(term, () => winData.ws);
 
       term.onResize(({ cols, rows }) => {
         if (winData.ws && winData.ws.readyState === 1) {
@@ -1730,6 +1743,7 @@
         cursorBlink: true,
         fontSize: currentFontSize,
         fontFamily: "'JetBrains Mono', monospace",
+        macOptionIsMeta: true,
         theme: {
           background: '#0d1117',
           foreground: '#c9d1d9',
@@ -1800,6 +1814,7 @@
 
       termSessions.set(sessionId, { term, fitAddon, ws, el: wrapper, config, mouseTracker, wrapperRo, floatingWindows: new Map() });
 
+      setupKeyOverrides(term, () => termSessions.get(sessionId)?.ws);
       setupTouchLayer(wrapper, term, () => termSessions.get(sessionId)?.ws, mouseTracker);
       setupShiftSelect(term, mouseTracker);
       activateSession(sessionId);
@@ -2361,6 +2376,37 @@
     // Matches: DA1/DA2 (\x1b[?...c, \x1b[>...c), DSR (\x1b[...n),
     //          OSC color responses (\x1b]10;...\x1b\\ or \x1b]11;...\x07 etc.)
     const TERM_RESPONSE_RE = /\x1b\[\??[>]?[\d;]*[cn]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
+    // --- Custom key overrides ---
+    // 1. macOptionIsMeta handles Option+key natively.
+    // 2. Cmd has no terminal equivalent → map standard editing shortcuts.
+    // 3. Suppress xterm legacy Ctrl+digit → control-char mappings.
+    const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+    const CMD_BINDINGS = {
+      'Backspace':  '\x15',       // Cmd+Backspace → Ctrl+U (kill to BOL)
+      'Delete':     '\x0b',       // Cmd+Delete    → Ctrl+K (kill to EOL)
+      'ArrowLeft':  '\x01',       // Cmd+Left      → Ctrl+A (BOL)
+      'ArrowRight': '\x05',       // Cmd+Right     → Ctrl+E (EOL)
+    };
+    function setupKeyOverrides(term, getWs) {
+      term.attachCustomKeyEventHandler((e) => {
+        if (e.type !== 'keydown') return true;
+        // Suppress Ctrl+3 → ESC (xterm legacy mapping)
+        if (e.ctrlKey && e.key === '3') return false;
+        // Cmd+key editing shortcuts (Mac only)
+        if (IS_MAC && e.metaKey) {
+          const seq = CMD_BINDINGS[e.key];
+          if (!seq) return true;
+          const ws = getWs();
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'input', data: seq }));
+          }
+          e.preventDefault();
+          return false;
+        }
+        return true;
+      });
+    }
 
     function wrapOnData(term, ws) {
       // --- IME composition guard ---
