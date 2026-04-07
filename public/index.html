@@ -1625,7 +1625,7 @@
 
     document.getElementById('sidebar-btn-new').addEventListener('click', () => showConnectDialog());
     document.getElementById('sidebar-btn-add-window').addEventListener('click', () => {
-      if (activeSessionId) createFloatingWindow(activeSessionId);
+      if (activeSessionId) showConnectDialog('floating');
     });
 
     function toggleSidebar() {
