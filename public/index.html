@@ -51,13 +51,12 @@
         border-top: 1px solid rgba(255,255,255,0.08);
       }
       #header.hidden { display: none; }
+      #sidebar { display: none; }
+      #sidebar-open-btn { display: none !important; }
     }
     @media (min-width: 769px) {
       body {
         flex-direction: row;
-      }
-      #sidebar {
-        display: flex;
       }
       #sidebar.hidden {
         display: none;
@@ -437,13 +436,29 @@
 
     /* --- Sidebar (Desktop Vertical Tabs) --- */
     #sidebar {
-      display: none;
+      display: flex;
       flex-direction: column;
       width: 200px;
+      min-width: 120px;
+      max-width: 50vw;
       flex-shrink: 0;
       background: #1c1c1e;
       border-right: 1px solid rgba(255,255,255,0.08);
       overflow: hidden;
+      position: relative;
+    }
+    #sidebar-resize-handle {
+      position: absolute;
+      top: 0;
+      right: -3px;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 5;
+    }
+    #sidebar-resize-handle:hover,
+    #sidebar-resize-handle.active {
+      background: rgba(94,158,255,0.4);
     }
     #sidebar-header {
       display: flex;
@@ -879,6 +894,7 @@
       <button id="sidebar-btn-add-window" title="Add floating window">&#x25A3; Window</button>
       <button id="sidebar-btn-new" title="New connection">+ Connect</button>
     </div>
+    <div id="sidebar-resize-handle"></div>
   </div>
   <div id="terminal-container">
     <button id="sidebar-open-btn" title="Show sidebar">&#9776;</button>
@@ -1631,6 +1647,45 @@
 
     sidebarToggle.addEventListener('click', toggleSidebar);
     sidebarOpenBtn.addEventListener('click', toggleSidebar);
+
+    // --- Sidebar resize ---
+    const SIDEBAR_WIDTH_KEY = 'ssh-sidebar-width';
+    const sidebarResizeHandle = document.getElementById('sidebar-resize-handle');
+    {
+      let dragging = false;
+      sidebarResizeHandle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        sidebarResizeHandle.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const width = Math.min(Math.max(e.clientX, 120), window.innerWidth * 0.5);
+        sidebar.style.width = width + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        sidebarResizeHandle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebar.style.width);
+        requestAnimationFrame(() => {
+          for (const [, s] of termSessions) {
+            s.fitAddon.fit();
+            if (s.floatingWindows) {
+              for (const [, fw] of s.floatingWindows) {
+                if (fw.fitAddon) fw.fitAddon.fit();
+              }
+            }
+          }
+        });
+      });
+      const savedWidth = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      if (savedWidth) sidebar.style.width = savedWidth;
+    }
 
     // Restore sidebar state
     if (localStorage.getItem(SIDEBAR_VISIBLE_KEY) === 'false') {
