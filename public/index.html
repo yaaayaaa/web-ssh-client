@@ -2170,7 +2170,17 @@
       ro.observe(document.getElementById('terminal-container'));
     }
 
-    window.addEventListener('resize', () => { updateTabLayout(); fitActiveTerminal(); });
+    let wasDesktop = window.innerWidth > 768;
+    window.addEventListener('resize', () => {
+      const isDesktop = window.innerWidth > 768;
+      if (isDesktop !== wasDesktop) {
+        wasDesktop = isDesktop;
+        renderTabs();
+        updateAddWindowButton();
+      }
+      updateTabLayout();
+      fitActiveTerminal();
+    });
     window.addEventListener('beforeunload', saveFloatingState);
 
     // Prevent browser from scrolling the page to reveal focused elements
@@ -3126,7 +3136,8 @@
       const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.altKey;
       if (mod && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
-        const tabs = document.querySelectorAll('#tab-bar .tab');
+        const isDesktop = window.innerWidth > 768;
+        const tabs = document.querySelectorAll(isDesktop ? '#sidebar-tabs .tab' : '#tab-bar .tab');
         const idx = parseInt(e.key) - 1;
         if (idx < tabs.length) {
           const sessionId = tabs[idx].dataset.sessionId;
