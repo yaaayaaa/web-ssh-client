@@ -1593,6 +1593,8 @@
 
     // --- DOM refs ---
     const tabBar = document.getElementById('tab-bar');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarTabs = document.getElementById('sidebar-tabs');
     const container = document.getElementById('terminal-container');
     const emptyState = document.getElementById('empty-state');
     const connectOverlay = document.getElementById('connect-overlay');
@@ -2050,8 +2052,12 @@
     const TAB_MIN_WIDTH = 80; // px – threshold before switching to scroll mode
 
     function renderTabs() {
+      const isDesktop = window.innerWidth > 768;
+      const target = isDesktop ? sidebarTabs : tabBar;
       const savedScrollLeft = tabBar.scrollLeft;
+      // Clear both containers
       tabBar.innerHTML = '';
+      sidebarTabs.innerHTML = '';
       tabBar.classList.remove('scrollable');
       let tabIdx = 0;
       for (const [id, s] of termSessions) {
@@ -2071,10 +2077,12 @@
           e.stopPropagation();
           closeSession(id);
         });
-        tabBar.appendChild(tab);
+        target.appendChild(tab);
       }
-      updateTabLayout();
-      tabBar.scrollLeft = savedScrollLeft;
+      if (!isDesktop) {
+        updateTabLayout();
+        tabBar.scrollLeft = savedScrollLeft;
+      }
     }
 
     function updateTabLayout() {
