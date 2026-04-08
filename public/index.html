@@ -1275,6 +1275,11 @@
             term.write(forceTextPresentation(msg.data));
           } else if (msg.type === 'closed') {
             term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
+          } else if (msg.type === 'sync-size') {
+            if (term.cols !== msg.cols || term.rows !== msg.rows) {
+              winData._syncResize = true;
+              term.resize(msg.cols, msg.rows);
+            }
           } else if (msg.type === 'pong') {
             clearTimeout(winData._pingTimer);
           }
@@ -1292,6 +1297,7 @@
       wrapOnData(term, ws);
 
       term.onResize(({ cols, rows }) => {
+        if (winData._syncResize) { winData._syncResize = false; return; }
         if (winData.ws && winData.ws.readyState === 1) {
           winData.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
         }
@@ -1381,6 +1387,11 @@
           if (msg.type === 'output') {
             if (winData.mouseTracker) winData.mouseTracker.feed(msg.data);
             winData.term.write(forceTextPresentation(msg.data));
+          } else if (msg.type === 'sync-size') {
+            if (winData.term.cols !== msg.cols || winData.term.rows !== msg.rows) {
+              winData._syncResize = true;
+              winData.term.resize(msg.cols, msg.rows);
+            }
           } else if (msg.type === 'closed') {
             winData.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
           } else if (msg.type === 'pong') {
@@ -2003,6 +2014,12 @@
             removeSession(sessionId);
           } else if (msg.type === 'error') {
             term.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`);
+          } else if (msg.type === 'sync-size') {
+            if (term.cols !== msg.cols || term.rows !== msg.rows) {
+              const s = termSessions.get(sessionId);
+              if (s) s._syncResize = true;
+              term.resize(msg.cols, msg.rows);
+            }
           } else if (msg.type === 'pong') {
             const s = termSessions.get(sessionId);
             if (s) clearTimeout(s._pingTimer);
@@ -2024,6 +2041,7 @@
 
       term.onResize(({ cols, rows }) => {
         const cur = termSessions.get(sessionId);
+        if (cur && cur._syncResize) { cur._syncResize = false; return; }
         if (cur && cur.ws.readyState === 1) {
           cur.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
         }
@@ -2075,6 +2093,11 @@
           if (msg.type === 'output') {
             if (session.mouseTracker) session.mouseTracker.feed(msg.data);
             session.term.write(forceTextPresentation(msg.data));
+          } else if (msg.type === 'sync-size') {
+            if (session.term.cols !== msg.cols || session.term.rows !== msg.rows) {
+              session._syncResize = true;
+              session.term.resize(msg.cols, msg.rows);
+            }
           } else if (msg.type === 'closed') {
             session.term.write('\r\n\x1b[31m--- Session closed ---\x1b[0m\r\n');
             removeSession(sessionId);

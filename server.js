@@ -315,6 +315,15 @@ app.post('/api/sessions/:id/resize', (req, res) => {
 });
 
 // --- WebSocket ---
+function broadcastSize(session) {
+  const msg = JSON.stringify({ type: 'sync-size', cols: session.cols, rows: session.rows });
+  for (const client of session.wsClients) {
+    if (client.readyState === 1) {
+      client.send(msg);
+    }
+  }
+}
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const sessionId = url.searchParams.get('sessionId');
@@ -356,6 +365,7 @@ wss.on('connection', (ws, req) => {
             session.cols = ws._pendingCols;
             session.rows = ws._pendingRows;
             try { session.stream.setWindow(ws._pendingRows, ws._pendingCols, 0, 0); } catch {}
+            broadcastSize(session);
           }
         }
       } else if (msg.type === 'resize' && session.stream) {
@@ -367,6 +377,7 @@ wss.on('connection', (ws, req) => {
           session.cols = cols;
           session.rows = rows;
           try { session.stream.setWindow(rows, cols, 0, 0); } catch {}
+          broadcastSize(session);
         }
       } else if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
