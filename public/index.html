@@ -1802,11 +1802,11 @@
             <button class="del-btn" title="Delete">&times;</button>
           </div>
         `;
-        item.querySelector('.saved-item-info').addEventListener('click', () => connectSaved(c.id));
-        item.querySelector('.del-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          deleteSavedConnection(c.id);
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.del-btn')) return;
+          connectSaved(c.id);
         });
+        item.querySelector('.del-btn').addEventListener('click', () => deleteSavedConnection(c.id));
         list.appendChild(item);
       }
     }
@@ -2206,11 +2206,11 @@
           <span class="tab-label">${label}</span>
           <span class="close-btn" title="Close">&times;</span>
         `;
-        tab.querySelector('.tab-label').addEventListener('click', () => activateSession(id));
-        tab.querySelector('.close-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          closeSession(id);
+        tab.addEventListener('click', (e) => {
+          if (e.target.closest('.close-btn')) return;
+          activateSession(id);
         });
+        tab.querySelector('.close-btn').addEventListener('click', () => closeSession(id));
         target.appendChild(tab);
       }
       if (!isDesktop) {
