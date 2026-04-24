@@ -1628,11 +1628,11 @@
     }
 
     function updateAddWindowButton() {
-      const showDesktopActions = isDesktopLayout() && termSessions.size > 0;
+      const show = termSessions.size > 0;
       const btn = document.getElementById('btn-add-window');
-      btn.style.display = showDesktopActions ? 'inline-flex' : 'none';
+      btn.style.display = show ? 'inline-flex' : 'none';
       const sidebarAddBtn = document.getElementById('sidebar-btn-add-window');
-      if (sidebarAddBtn) sidebarAddBtn.style.display = showDesktopActions ? 'block' : 'none';
+      if (sidebarAddBtn) sidebarAddBtn.style.display = show ? 'block' : 'none';
     }
 
     // --- DOM refs ---
