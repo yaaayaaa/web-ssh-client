@@ -306,6 +306,16 @@
       font-size: inherit;
       line-height: inherit;
     }
+    .ime-ghost {
+      position: absolute;
+      display: none;
+      color: #e5e5e7;
+      background: #1c1c1e;
+      font-family: 'JetBrains Mono', 'Hiragino Sans', 'Yu Gothic', 'Noto Sans CJK JP', 'MS Gothic', monospace;
+      white-space: pre;
+      pointer-events: none;
+      z-index: 5;
+    }
     .terminal-wrapper .xterm-viewport {
       scrollbar-width: none;
     }
@@ -2647,6 +2657,38 @@
     //          OSC color responses (\x1b]10;...\x1b\\ or \x1b]11;...\x07 etc.)
     const TERM_RESPONSE_RE = /\x1b\[\??[>]?[\d;]*[cn]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
+    function showImeGhost(term, text) {
+      const wrapper = term.element && term.element.parentElement;
+      const textarea = term.textarea;
+      if (!wrapper || !textarea) return;
+      let ghost = wrapper.querySelector(':scope > .ime-ghost');
+      if (!ghost) {
+        ghost = document.createElement('div');
+        ghost.className = 'ime-ghost';
+        wrapper.appendChild(ghost);
+      }
+      const taRect = textarea.getBoundingClientRect();
+      const wRect = wrapper.getBoundingClientRect();
+      ghost.style.left = (taRect.left - wRect.left) + 'px';
+      ghost.style.top = (taRect.top - wRect.top) + 'px';
+      ghost.style.fontSize = (term.options.fontSize || currentFontSize) + 'px';
+      ghost.style.lineHeight = ((term.options.fontSize || currentFontSize) * 1.2) + 'px';
+      ghost.textContent = text;
+      ghost.style.display = 'block';
+      clearTimeout(ghost._timer);
+      ghost._timer = setTimeout(() => { ghost.style.display = 'none'; }, 800);
+    }
+
+    function hideImeGhost(term) {
+      const wrapper = term.element && term.element.parentElement;
+      if (!wrapper) return;
+      const ghost = wrapper.querySelector(':scope > .ime-ghost');
+      if (ghost && ghost.style.display !== 'none') {
+        ghost.style.display = 'none';
+        clearTimeout(ghost._timer);
+      }
+    }
+
     function wrapOnData(term, ws) {
       // --- IME composition guard ---
       // Send composed text immediately at compositionend, then skip
@@ -2665,10 +2707,16 @@
           const text = e.data;
           if (text && ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'input', data: text }));
+            showImeGhost(term, text);
           }
           // Mark to skip subsequent onData fires for this composed text
           skipComposed = text || null;
         });
+      }
+
+      // Hide ghost overlay once server echo (or any term write) arrives
+      if (term.onWriteParsed) {
+        term.onWriteParsed(() => hideImeGhost(term));
       }
 
       term.onData((data) => {
